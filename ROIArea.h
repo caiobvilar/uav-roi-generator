@@ -46,9 +46,8 @@ private:
     GDALHandler gdalHandler;
     void drawLineTo(const QPointF &endPoint);
     void drawPointTo(const QPointF &endPoint);
-    void resizeImage(QImage *image, const QSize &newSize);
     void drawPolygon(const QPolygonF &polygon);
-
+    QPolygonF snapPolygon(const QPolygonF &poly);
     bool modified = false;
     bool writing = false;
     bool haveStartPoint = false;

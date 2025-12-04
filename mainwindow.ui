@@ -6,8 +6,8 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>800</width>
-    <height>600</height>
+    <width>1017</width>
+    <height>907</height>
    </rect>
   </property>
   <property name="windowTitle">
@@ -15,16 +15,19 @@
   </property>
   <widget class="QWidget" name="centralwidget">
    <layout class="QVBoxLayout" name="verticalLayout">
-    <item>
+    <item alignment="Qt::AlignmentFlag::AlignHCenter">
      <widget class="ROIArea" name="roiArea" native="true">
       <property name="minimumSize">
        <size>
-        <width>782</width>
-        <height>513</height>
+        <width>999</width>
+        <height>800</height>
        </size>
       </property>
       <property name="focusPolicy">
        <enum>Qt::FocusPolicy::ClickFocus</enum>
+      </property>
+      <property name="layoutDirection">
+       <enum>Qt::LayoutDirection::LeftToRight</enum>
       </property>
       <property name="autoFillBackground">
        <bool>true</bool>
@@ -38,6 +41,13 @@
       </property>
      </widget>
     </item>
+    <item alignment="Qt::AlignmentFlag::AlignRight">
+     <widget class="QLabel" name="label">
+      <property name="text">
+       <string>TextLabel</string>
+      </property>
+     </widget>
+    </item>
    </layout>
   </widget>
   <widget class="QMenuBar" name="menubar">
@@ -45,7 +55,7 @@
     <rect>
      <x>0</x>
      <y>0</y>
-     <width>800</width>
+     <width>1017</width>
      <height>19</height>
     </rect>
    </property>

@@ -6,7 +6,7 @@
 #include <QDebug>
 #include <gdal_priv.h>
 #include <cpl_conv.h> // CPLMalloc
-
+#define GEO_TRANSFORM_SIZE 6
 class GDALHandler
 {
 public:
@@ -23,6 +23,7 @@ public:
 private:
     GDALDataset *srcDataset = nullptr;
     GDALDataset *destDataset = nullptr;
+    double geoTransform[GEO_TRANSFORM_SIZE];
 };
 
 #endif // GDALHANDLER_H

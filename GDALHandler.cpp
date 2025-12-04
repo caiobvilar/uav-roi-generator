@@ -13,7 +13,9 @@ bool GDALHandler::openSrcRaster(const QString &fileName)
         GDALOpen(fileName.toStdString().c_str(), GA_ReadOnly));
     if (!srcDataset)
         return false;
-
+    if (srcDataset->GetGeoTransform(geoTransform) != CE_None) {
+        qWarning() << "No georeferencing data from this dataset/image.";
+    }
     return true;
 }
 

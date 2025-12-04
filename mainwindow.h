@@ -20,6 +20,8 @@ private slots:
     void onCloseFileTriggered();
     void onAddLayerTriggered();
 
+    void on_centralwidget_customContextMenuRequested(const QPoint &pos);
+
 private:
     Ui::MainWindow *ui;
 };

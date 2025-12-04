@@ -9,6 +9,8 @@
 ROIArea::ROIArea(QWidget *parent)
     : QWidget(parent)
 {
+    this->setMinimumHeight(650);
+    this->setMinimumWidth(1000);
     // 1. Create and store an initial empty base image
     QImage baseImage(size(), QImage::Format_ARGB32_Premultiplied);
     baseImage.fill(Qt::white); // or Qt::transparent
@@ -86,7 +88,6 @@ bool ROIArea::closeImage()
 bool ROIArea::saveImage(const QString &fileName, const char *fileFormat)
 {
     QImage visibleImage = getCurrentImage();
-    resizeImage(&visibleImage, size());
 
     if (visibleImage.save(fileName, fileFormat)) {
         modified = false;
@@ -126,9 +127,12 @@ void ROIArea::keyPressEvent(QKeyEvent *event)
             haveStartPoint = false;
 
             finalPolygon = grahamScanner.ComputeHull(); // must return QPolygonF
+            finalPolygon = snapPolygon(finalPolygon);   // Snaps last point to the first
             showFinalPolygon = !finalPolygon.isEmpty()
                                && finalPolygon.size() >= 3; // only if it’s a real polygon
             isPolygonDrawn = showFinalPolygon;
+            qWarning() << "finalPolygon size =" << finalPolygon.size()
+                       << " showFinalPolygon =" << showFinalPolygon;
             update(); // triggers paintEvent
         }
         break;
@@ -148,7 +152,7 @@ void ROIArea::mousePressEvent(QMouseEvent *event)
             showFinalPolygon = false;
             isPolygonDrawn = false;
             finalPolygon = QPolygonF();
-            grahamScanner.clear(); // implement this to clear its point list
+            grahamScanner.clear();
         }
 
         writing = true;
@@ -156,6 +160,7 @@ void ROIArea::mousePressEvent(QMouseEvent *event)
         drawPointTo(p);
 
         if (!haveStartPoint) {
+            startPoint = p; // remember first point
             lastPoint = p;
             haveStartPoint = true;
         } else {
@@ -163,8 +168,13 @@ void ROIArea::mousePressEvent(QMouseEvent *event)
         }
 
         update();
-    } else if (event->button() == Qt::RightButton) {
-        // stop drawing current poly, don’t clear hull
+    } else if (event->button() == Qt::RightButton && haveStartPoint) {
+        // Snap last point to first and draw closing segment
+        QPointF snapped = startPoint;
+
+        grahamScanner.addPointToPolygon(snapped); // store snapped point
+        drawLineTo(snapped);                      // draw closing edge
+
         writing = false;
         haveStartPoint = false;
         update();
@@ -186,29 +196,40 @@ void ROIArea::mouseReleaseEvent(QMouseEvent *event)
 void ROIArea::paintEvent(QPaintEvent *event)
 {
     QPainter painter(this);
-    QRect r = event->rect();
+    painter.fillRect(rect(), Qt::black); // or white background
 
+    const QImage *img = nullptr;
     if (currentImagePtr && !currentImagePtr->isNull()) {
-        painter.drawImage(r, *currentImagePtr, r);
-    } else if (!overlayListHandles.isEmpty()) {
-        QImage *top = overlayListHandles.last();
-        if (top && !top->isNull())
-            painter.drawImage(r, *top, r);
-    } else {
-        painter.fillRect(r, Qt::white);
+        img = currentImagePtr;
+        qWarning() << "Image size is (wxd): " << img->width() << " x " << img->height();
+    } else if (!overlayListHandles.isEmpty() && overlayListHandles.last())
+        img = overlayListHandles.last();
+
+    if (img && !img->isNull()) {
+        // draw at 1:1 pixels, top-left
+        painter.drawImage(QPoint(0, 0), *img);
+        // or centered without scaling:
+        //QPoint p((width() - img->width()) / 2, (height() - img->height()) / 2);
+        //painter.drawImage(painter, *img);
+    }
+    if (showFinalPolygon && finalPolygon.size() >= 3) {
+        painter.setRenderHint(QPainter::Antialiasing);
+        QPen pen(Qt::red);
+        pen.setWidth(2);
+        painter.setPen(pen);
+        QBrush brush(QColor(255, 0, 0, 80)); // semi‑transparent fill
+        painter.setBrush(brush);
+        painter.drawPolygon(finalPolygon);
     }
 }
 
 void ROIArea::resizeEvent(QResizeEvent *event)
 {
-    QImage image = getCurrentImage();
-    if (width() > image.width() || height() > image.height()) {
-        int newWidth = qMax(width() + 128, image.width());
-        int newHeight = qMax(height() + 128, image.height());
-        resizeImage(&image, QSize(newWidth, newHeight));
-        update();
-    }
+    // Do NOT resize any QImage here: images keep their pixel size.
+    // The widget will just scale how it draws them (via paintEvent).
+
     QWidget::resizeEvent(event);
+    update();
 }
 
 void ROIArea::drawPointTo(const QPointF &endPoint)
@@ -252,18 +273,6 @@ void ROIArea::drawLineTo(const QPointF &endPoint)
         QRect(lastPoint.toPoint(), endPoint.toPoint()).normalized().adjusted(-rad, -rad, +rad, +rad));
 
     lastPoint = endPoint; // to chain segments
-}
-
-void ROIArea::resizeImage(QImage *image, const QSize &newSize)
-{
-    if (image->size() == newSize)
-        return;
-
-    QImage newImage(newSize, QImage::Format_RGB32);
-    newImage.fill(qRgb(255, 255, 255));
-    QPainter painter(&newImage);
-    painter.drawImage(QPoint(0, 0), *image);
-    *image = newImage;
 }
 
 void ROIArea::drawPolygon(const QPolygonF &polygon)
@@ -328,6 +337,15 @@ void ROIArea::addOverlay(const QImage &baseImage)
     update();
 }
 
+QPolygonF ROIArea::snapPolygon(const QPolygonF &polygon)
+{
+    QPolygonF result = polygon;
+    if (result.size() >= 2) {
+        // make last vertex identical to first
+        result[result.size() - 1] = result.first();
+    }
+    return result;
+}
 void ROIArea::setCurrentImage(QImage *settingImage)
 {
     currentImagePtr = settingImage;
