@@ -1,0 +1,51 @@
+cmake_minimum_required(VERSION 3.19)
+project(ROIGenerator LANGUAGES CXX)
+
+find_package(Qt6 6.5 REQUIRED COMPONENTS Core Gui Widgets)
+find_package(Qt6 REQUIRED COMPONENTS Widgets)
+find_package(Qt6 REQUIRED COMPONENTS Core)
+find_package(GDAL REQUIRED)
+qt_standard_project_setup()
+
+set(CMAKE_AUTOMOC ON)
+set(CMAKE_AUTOUIC ON)
+set(CMAKE_AUTORCC ON)
+
+qt_add_executable(ROIGenerator
+    WIN32 MACOSX_BUNDLE
+    main.cpp
+
+
+    ROIArea.h ROIArea.cpp
+    grahamscan.h grahamscan.cpp
+    GDALHandler.h GDALHandler.cpp
+    mainwindow.h mainwindow.cpp mainwindow.ui
+)
+target_include_directories(ROIGenerator
+    PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}
+)
+target_link_libraries(ROIGenerator
+    PRIVATE
+        Qt::Core
+        Qt::Gui
+        Qt::Widgets
+)
+target_link_libraries(ROIGenerator PRIVATE Qt6::Widgets)
+target_link_libraries(ROIGenerator PRIVATE Qt6::Core)
+target_link_libraries(ROIGenerator PRIVATE GDAL::GDAL)
+
+include(GNUInstallDirs)
+
+install(TARGETS ROIGenerator
+    BUNDLE  DESTINATION .
+    RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+    LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+)
+
+qt_generate_deploy_app_script(
+    TARGET ROIGenerator
+    OUTPUT_SCRIPT deploy_script
+    NO_UNSUPPORTED_PLATFORM_ERROR
+)
+install(SCRIPT ${deploy_script})
