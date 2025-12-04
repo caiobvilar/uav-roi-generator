@@ -53,6 +53,7 @@ bool ROIArea::openImage(const QString &fileName)
     setCurrentImage(ptr);           // currentImagePtr = ptr;
 
     modified = false;
+    emit StatusMessageChanged(gdalHandler.getDataSetCRSInfo());
     update();
     return true;
 }
@@ -195,29 +196,29 @@ void ROIArea::mouseReleaseEvent(QMouseEvent *event)
 
 void ROIArea::paintEvent(QPaintEvent *event)
 {
+    Q_UNUSED(event);
     QPainter painter(this);
-    painter.fillRect(rect(), Qt::black); // or white background
+    painter.fillRect(rect(), Qt::black); // or white
 
     const QImage *img = nullptr;
-    if (currentImagePtr && !currentImagePtr->isNull()) {
-        img = currentImagePtr;
-        qWarning() << "Image size is (wxd): " << img->width() << " x " << img->height();
-    } else if (!overlayListHandles.isEmpty() && overlayListHandles.last())
+
+    // Prefer top overlay if present
+    if (!overlayListHandles.isEmpty()) {
         img = overlayListHandles.last();
+    } else if (currentImagePtr && !currentImagePtr->isNull()) {
+        img = currentImagePtr;
+    }
 
     if (img && !img->isNull()) {
-        // draw at 1:1 pixels, top-left
         painter.drawImage(QPoint(0, 0), *img);
-        // or centered without scaling:
-        //QPoint p((width() - img->width()) / 2, (height() - img->height()) / 2);
-        //painter.drawImage(painter, *img);
     }
+
     if (showFinalPolygon && finalPolygon.size() >= 3) {
         painter.setRenderHint(QPainter::Antialiasing);
         QPen pen(Qt::red);
         pen.setWidth(2);
         painter.setPen(pen);
-        QBrush brush(QColor(255, 0, 0, 80)); // semi‑transparent fill
+        QBrush brush(QColor(255, 0, 0, 80));
         painter.setBrush(brush);
         painter.drawPolygon(finalPolygon);
     }
@@ -324,7 +325,7 @@ void ROIArea::addOverlay(const QImage &baseImage)
     p.setFont(f);
 
     const QString text = QStringLiteral("ROI Layer");
-    const int margin = 5;
+    const int margin = 10;
     QRect rect = overlay.rect().adjusted(margin, margin, -margin, -margin);
     p.drawText(rect, Qt::AlignTop | Qt::AlignRight, text);
 
@@ -355,4 +356,224 @@ const QImage &ROIArea::getCurrentImage() const
 {
     static QImage empty;
     return currentImagePtr ? *currentImagePtr : empty;
+}
+QByteArray ROIArea::exportPolygonGeoJSON() const
+{
+    if (finalPolygon.size() < 3) {
+        qWarning() << "Your list of points is less than three = not a polygon.";
+        return QByteArray(); // nothing to export
+    }
+
+    QPolygonF geoPolygon = gdalHandler.polygonToGeo(finalPolygon);
+
+    // Ensure ring is closed (first == last)
+    if (geoPolygon.first() != geoPolygon.last())
+        geoPolygon << geoPolygon.first();
+
+    QJsonArray ring;
+    for (int i = 0; i < geoPolygon.size(); ++i) {
+        const QPointF &p = geoPolygon.at(i);
+        QJsonArray coord;
+        coord.append(p.x()); // X (easting / lon)
+        coord.append(p.y()); // Y (northing / lat)
+        ring.append(coord);
+    }
+
+    QJsonArray coordinates;
+    coordinates.append(ring); // single ring
+
+    QJsonObject geom;
+    geom["type"] = "Polygon";
+    geom["coordinates"] = coordinates;
+
+    QJsonObject feature;
+    feature["type"] = "Feature";
+    feature["geometry"] = geom;
+    feature["properties"] = QJsonObject(); // or add attributes
+
+    QJsonObject fc;
+    fc["type"] = "FeatureCollection";
+    fc["features"] = QJsonArray{feature};
+
+    QJsonDocument doc(fc);
+    return doc.toJson(QJsonDocument::Indented);
+}
+void ROIArea::saveGEOJson(QByteArray &document)
+{
+    QString fileName = QFileDialog::getSaveFileName(this,
+                                                    tr("Save ROI as GeoJSON"),
+                                                    QString(),
+                                                    tr("GeoJSON (*.geojson *.json)"));
+
+    if (!fileName.isEmpty()) {
+        QByteArray json = document;
+        QFile f(fileName);
+        if (f.open(QIODevice::WriteOnly | QIODevice::Truncate))
+            f.write(json);
+
+        f.close();
+        qWarning() << "Written data to: " << fileName.toStdString();
+    }
+}
+
+QByteArray ROIArea::reprojectGeoJSONPolygon(const QByteArray &srcJson) const
+{
+    QJsonParseError err;
+    QJsonDocument srcDoc = QJsonDocument::fromJson(srcJson, &err);
+    if (err.error != QJsonParseError::NoError || !srcDoc.isObject())
+        return QByteArray();
+
+    QJsonObject fc = srcDoc.object();
+    if (fc.value("type").toString() != QLatin1String("FeatureCollection"))
+        return QByteArray();
+
+    QJsonArray features = fc.value("features").toArray();
+    if (features.isEmpty() || !features.at(0).isObject())
+        return QByteArray();
+
+    QJsonObject feature = features.at(0).toObject();
+    QJsonObject geom = feature.value("geometry").toObject();
+    if (geom.value("type").toString() != QLatin1String("Polygon"))
+        return QByteArray();
+
+    QJsonArray coords = geom.value("coordinates").toArray();
+    if (coords.isEmpty() || !coords.at(0).isArray())
+        return QByteArray();
+
+    QJsonArray ring = coords.at(0).toArray(); // first linear ring
+
+    // --- set up CRS transform: EPSG:31984 -> EPSG:4326 ---
+    OGRSpatialReference srcSRS, dstSRS;
+    if (srcSRS.importFromEPSG(31984) != OGRERR_NONE)
+        return QByteArray();
+    if (dstSRS.importFromEPSG(4326) != OGRERR_NONE)
+        return QByteArray();
+
+    OGRCoordinateTransformation *ct = OGRCreateCoordinateTransformation(&srcSRS, &dstSRS);
+    if (!ct)
+        return QByteArray();
+
+    QJsonArray outRing;
+    for (int i = 0; i < ring.size(); ++i) {
+        QJsonArray c = ring.at(i).toArray();
+        if (c.size() < 2) {
+            outRing.append(c);
+            continue;
+        }
+
+        double x = c.at(0).toDouble(); // easting (m)
+        double y = c.at(1).toDouble(); // northing (m)
+        double z = 0.0;
+
+        if (!ct->Transform(1, &x, &y, &z)) {
+            outRing.append(c); // fallback: keep original
+            continue;
+        }
+
+        QJsonArray outC;
+        outC.append(x); // lon
+        outC.append(y); // lat
+        outRing.append(outC);
+    }
+    OCTDestroyCoordinateTransformation(ct);
+
+    QJsonArray outCoords;
+    outCoords.append(outRing);
+    geom["coordinates"] = outCoords;
+    feature["geometry"] = geom;
+
+    // update CRS properties
+    QJsonObject props = feature.value("properties").toObject();
+    props["crs_authority"] = QLatin1String("EPSG");
+    props["crs_code"] = 4326;
+    props["crs_name"] = QLatin1String("WGS 84");
+    feature["properties"] = props;
+
+    features[0] = feature;
+    fc["features"] = features;
+
+    QJsonDocument outDoc(fc);
+    return outDoc.toJson(QJsonDocument::Indented);
+}
+QList<QPointF> ROIArea::openGeoJSONFilePoints(const QString &filename)
+{
+    qInfo() << Q_FUNC_INFO << "IS THIS BEING CALLED AT ALL?????";
+    return gdalHandler.loadPolygonFromGeoJSON(filename);
+}
+void ROIArea::drawGeoPolygonOnImage(QImage *img, const QList<QPointF> &geoPts)
+{
+    qInfo() << Q_FUNC_INFO << "IS THIS BEING CALLED AT ALL?????";
+    if (!img || img->isNull()) {
+        qWarning() << "drawGeoPolygonOnImage: null image";
+        return;
+    }
+
+    // Convert QList<QPointF> to QPolygonF in pixel space
+    QPolygonF pixPoly = gdalHandler.geoPolygonToPixels(geoPts); // change overload accordingly
+
+    qWarning() << "geoPts count =" << geoPts.size() << "pixPoly count =" << pixPoly.size();
+
+    // Image size
+    const int w = img->width();
+    const int h = img->height();
+
+    // Compute polygon bounding box
+    if (pixPoly.isEmpty()) {
+        qWarning() << "pixPoly is empty";
+        return;
+    }
+
+    qreal minX = pixPoly.first().x();
+    qreal maxX = minX;
+    qreal minY = pixPoly.first().y();
+    qreal maxY = minY;
+
+    for (int i = 1; i < pixPoly.size(); ++i) {
+        const QPointF &p = pixPoly.at(i);
+        minX = qMin(minX, p.x());
+        maxX = qMax(maxX, p.x());
+        minY = qMin(minY, p.y());
+        maxY = qMax(maxY, p.y());
+    }
+
+    qWarning() << "Image size:" << w << "x" << h;
+    qWarning() << "Polygon bbox: x[" << minX << "," << maxX << "] y[" << minY << "," << maxY << "]";
+
+    if (maxX < 0 || maxY < 0 || minX >= w || minY >= h) {
+        qWarning() << "Polygon completely outside image bounds -> not visible";
+        return; // early‑out so you know it's off‑image
+    }
+
+    // Optionally log first few vertices
+    for (int i = 0; i < pixPoly.size() && i < 5; ++i)
+        qWarning() << "pix" << i << pixPoly.at(i);
+    for (int i = 0; i < pixPoly.size() && i < 3; ++i)
+        qWarning() << "pix" << i << pixPoly.at(i);
+
+    QPainter p(img);
+    if (!p.isActive()) {
+        qWarning() << "drawGeoPolygonOnImage: painter not active";
+        return;
+    }
+
+    p.setRenderHint(QPainter::Antialiasing, true);
+    QPen pen(Qt::green);
+    pen.setWidth(4);
+    p.setPen(pen);
+    p.setBrush(Qt::NoBrush);
+    p.drawPolygon(pixPoly);
+
+    update(); // repaint widget
+}
+
+void ROIArea::drawGeoPolygonOnCurrentOverlay(const QList<QPointF> &geoPts)
+{
+    emit StatusMessageChanged(QString(Q_FUNC_INFO));
+    if (overlayListHandles.isEmpty()) {
+        qWarning() << "overlayList is empty.";
+        return;
+    }
+
+    QImage *img = currentImagePtr;
+    drawGeoPolygonOnImage(img, geoPts);
 }

@@ -5,7 +5,12 @@
 #define ROIAREA_H
 
 #include <QColor>
+#include <QDebug>
+#include <QFileDialog>
 #include <QImage>
+#include <QJsonArray>
+#include <QJsonDocument>
+#include <QJsonObject>
 #include <QKeyEvent>
 #include <QList>
 #include <QPoint>
@@ -19,7 +24,7 @@ class ROIArea : public QWidget
 
 public:
     ROIArea(QWidget *parent = nullptr);
-
+    QByteArray exportPolygonGeoJSON() const;
     bool openImage(const QString &fileName);
     bool closeImage();
     bool saveImage(const QString &fileName, const char *fileFormat);
@@ -30,8 +35,15 @@ public:
     void setCurrentImage(QImage *settingImage);
     void clearPolygon();
     void addOverlay(const QImage &);
+    void saveGEOJson(QByteArray &document);
+    QByteArray reprojectGeoJSONPolygon(const QByteArray &srcJson) const;
+    QList<QPointF> openGeoJSONFilePoints(const QString &filename);
+    void drawGeoPolygonOnImage(QImage *img, const QList<QPointF> &geoPts);
+    void drawGeoPolygonOnCurrentOverlay(const QList<QPointF> &geoPts);
 public slots:
     void clearImage();
+signals:
+    void StatusMessageChanged(const QString &text);
 
 protected:
     void mousePressEvent(QMouseEvent *event) override;

@@ -17,10 +17,14 @@ public:
 
 private slots:
     void onOpenFileTriggered();
+    void onOpenGeoJSONFileTriggered();
     void onCloseFileTriggered();
     void onAddLayerTriggered();
 
-    void on_centralwidget_customContextMenuRequested(const QPoint &pos);
+    void onStatusMessageChanged(const QString &text);
+    void onSaveDrawnAreaTriggeredUTM24S();
+    void onSaveDrawnAreaTriggeredWGS84();
+    void onOpenGeoJSONAndDrawOnOverlayTriggered();
 
 private:
     Ui::MainWindow *ui;

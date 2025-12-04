@@ -16,6 +16,7 @@ bool GDALHandler::openSrcRaster(const QString &fileName)
     if (srcDataset->GetGeoTransform(geoTransform) != CE_None) {
         qWarning() << "No georeferencing data from this dataset/image.";
     }
+    this->dataSetCRSInfo = getDataSetCRS(srcDataset);
     return true;
 }
 
@@ -30,14 +31,49 @@ void GDALHandler::closeRaster()
         destDataset = nullptr;
     }
 }
+QString GDALHandler::getDataSetCRS(const GDALDataset *dataSet) const
+{
+    QString retCRS = QString("NaN");
+    if (!dataSet) {
+        return retCRS = "Error opening GDALDataset";
+    }
+
+    // For most raster datasets (including GeoTIFF)
+    const char *wkt = dataSet->GetProjectionRef(); // or GetProjection()
+    if (!wkt || std::strlen(wkt) == 0) {
+        // Some formats store only a GeoTransform or nothing
+        qWarning() << "Dataset has no projection.";
+        return retCRS = "Dataset has no projection.";
+    }
+
+    OGRSpatialReference srs;
+    if (srs.importFromWkt(wkt) != OGRERR_NONE) {
+        qWarning() << "Failed to parse WKT projection.";
+        return retCRS = "Failed to parse WKT projection.";
+    }
+
+    // Try to get an EPSG code if available
+    const char *authName = srs.GetAuthorityName(nullptr);
+    const char *authCode = srs.GetAuthorityCode(nullptr);
+
+    if (authName && authCode) {
+        retCRS = "CRS authority:" + QString(authName) + "code:" + QString(authCode);
+    }
+
+    char *prettyWkt = nullptr;
+    srs.exportToPrettyWkt(&prettyWkt, FALSE);
+    retCRS += "CRS WKT:\n" + QString(prettyWkt);
+    CPLFree(prettyWkt);
+    return retCRS;
+}
 QImage GDALHandler::toQImage() const
 {
     if (!srcDataset)
         return QImage();
 
-    const int width  = srcDataset->GetRasterXSize();
+    const int width = srcDataset->GetRasterXSize();
     const int height = srcDataset->GetRasterYSize();
-    const int bands  = srcDataset->GetRasterCount();
+    const int bands = srcDataset->GetRasterCount();
     if (bands < 3)
         return QImage();
 
@@ -64,14 +100,14 @@ QImage GDALHandler::toQImage() const
     std::vector<uint8_t> gBuf(pixelCount);
     std::vector<uint8_t> bBuf(pixelCount);
 
-    if (rb->RasterIO(GF_Read, 0, 0, width, height,
-                     rBuf.data(), width, height, GDT_Byte, 0, 0) != CE_None)
+    if (rb->RasterIO(GF_Read, 0, 0, width, height, rBuf.data(), width, height, GDT_Byte, 0, 0)
+        != CE_None)
         return QImage();
-    if (gb->RasterIO(GF_Read, 0, 0, width, height,
-                     gBuf.data(), width, height, GDT_Byte, 0, 0) != CE_None)
+    if (gb->RasterIO(GF_Read, 0, 0, width, height, gBuf.data(), width, height, GDT_Byte, 0, 0)
+        != CE_None)
         return QImage();
-    if (bb->RasterIO(GF_Read, 0, 0, width, height,
-                     bBuf.data(), width, height, GDT_Byte, 0, 0) != CE_None)
+    if (bb->RasterIO(GF_Read, 0, 0, width, height, bBuf.data(), width, height, GDT_Byte, 0, 0)
+        != CE_None)
         return QImage();
 
     QImage img(width, height, QImage::Format_RGB888);
@@ -83,11 +119,192 @@ QImage GDALHandler::toQImage() const
         int rowOff = y * width;
         for (int x = 0; x < width; ++x) {
             int i = rowOff + x;
-            dst[3*x + 0] = rBuf[i];
-            dst[3*x + 1] = gBuf[i];
-            dst[3*x + 2] = bBuf[i];
+            dst[3 * x + 0] = rBuf[i];
+            dst[3 * x + 1] = gBuf[i];
+            dst[3 * x + 2] = bBuf[i];
         }
     }
 
     return img;
+}
+
+QPointF GDALHandler::pixelToGeo(const QPointF &pixel) const
+{
+    const double *GT = geoTransform; // get pointer or array
+
+    double x = pixel.x();
+    double y = pixel.y();
+    // To understand the "+ 0.5" refer to
+    // https://engineering.purdue.edu/RVL/blog/doku.php?id=blog%3A2018%3A1003_pixel_to_geodesic_coordinate_transformations_using_geotiffs
+    double Xgeo = GT[0] + (x + 0.5) * GT[1] + (y + 0.5) * GT[2];
+    double Ygeo = GT[3] + (x + 0.5) * GT[4] + (y + 0.5) * GT[5];
+
+    return QPointF(Xgeo, Ygeo);
+}
+QPolygonF GDALHandler::polygonToGeo(const QPolygonF &poly) const
+{
+    QPolygonF geoPoly;
+    geoPoly.reserve(poly.size());
+    for (const QPointF &p : poly)
+        geoPoly << pixelToGeo(p);
+    return geoPoly;
+}
+
+QJsonDocument GDALHandler::reprojectGeoJSONPolygon(const QJsonDocument &srcDoc) const
+{
+    if (srcDoc.isNull() || !srcDoc.isObject())
+        return QJsonDocument();
+
+    QJsonObject fc = srcDoc.object();
+    if (fc.value("type").toString() != QStringLiteral("FeatureCollection"))
+        return QJsonDocument();
+
+    QJsonArray features = fc.value("features").toArray();
+    if (features.isEmpty() || !features.at(0).isObject())
+        return QJsonDocument();
+
+    QJsonObject feature = features.at(0).toObject();
+    QJsonObject geom = feature.value("geometry").toObject();
+    if (geom.value("type").toString() != QStringLiteral("Polygon"))
+        return QJsonDocument();
+
+    QJsonArray coords = geom.value("coordinates").toArray();
+    if (coords.isEmpty() || !coords.at(0).isArray())
+        return QJsonDocument();
+
+    QJsonArray ring = coords.at(0).toArray(); // first linear ring
+
+    // --- set up CRS transform: EPSG:31984 -> EPSG:4326 ---
+    OGRSpatialReference srcSRS, dstSRS;
+    if (srcSRS.importFromEPSG(31984) != OGRERR_NONE)
+        return QJsonDocument();
+    if (dstSRS.importFromEPSG(4326) != OGRERR_NONE)
+        return QJsonDocument();
+
+    OGRCoordinateTransformation *ct = OGRCreateCoordinateTransformation(&srcSRS, &dstSRS);
+    if (!ct)
+        return QJsonDocument();
+
+    QJsonArray outRing;
+    for (int i = 0; i < ring.size(); ++i) {
+        QJsonArray c = ring.at(i).toArray();
+        if (c.size() < 2) {
+            outRing.append(c);
+            continue;
+        }
+
+        double x = c.at(0).toDouble(); // easting (m)
+        double y = c.at(1).toDouble(); // northing (m)
+        double z = 0.0;
+
+        if (!ct->Transform(1, &x, &y, &z)) {
+            outRing.append(c); // fallback: keep original
+            continue;
+        }
+
+        // x = lon, y = lat in degrees (WGS84)
+        QJsonArray outC;
+        outC.append(x); // lon
+        outC.append(y); // lat
+        outRing.append(outC);
+    }
+    OCTDestroyCoordinateTransformation(ct);
+
+    QJsonArray outCoords;
+    outCoords.append(outRing);
+    geom["coordinates"] = outCoords;
+    feature["geometry"] = geom;
+
+    // update properties CRS info
+    QJsonObject props = feature.value("properties").toObject();
+    props["crs_authority"] = QStringLiteral("EPSG");
+    props["crs_code"] = 4326;
+    props["crs_name"] = QStringLiteral("WGS 84");
+    feature["properties"] = props;
+
+    features[0] = feature;
+    fc["features"] = features;
+
+    return QJsonDocument(fc);
+}
+
+QList<QPointF> GDALHandler::loadPolygonFromGeoJSON(const QString &path)
+{
+    QList<QPointF> pts;
+
+    GDALAllRegister();
+    GDALDataset *poDS = static_cast<GDALDataset *>(
+        GDALOpenEx(path.toUtf8().constData(), GDAL_OF_VECTOR, nullptr, nullptr, nullptr));
+    if (!poDS)
+        return pts;
+
+    OGRLayer *layer = poDS->GetLayer(0);
+    OGRFeature *feat = layer->GetNextFeature();
+    if (!feat) {
+        GDALClose(poDS);
+        return pts;
+    }
+
+    OGRGeometry *geom = feat->GetGeometryRef();
+    if (!geom || wkbFlatten(geom->getGeometryType()) != wkbPolygon) {
+        OGRFeature::DestroyFeature(feat);
+        GDALClose(poDS);
+        return pts;
+    }
+
+    auto *poly = geom->toPolygon();
+    OGRLinearRing *ring = poly->getExteriorRing();
+    int n = ring->getNumPoints();
+    pts.reserve(n);
+    for (int i = 0; i < n; ++i) {
+        double lon = ring->getX(i);
+        double lat = ring->getY(i);
+        pts.emplace_back(lon, lat);
+    }
+
+    OGRFeature::DestroyFeature(feat);
+    GDALClose(poDS);
+    return pts;
+}
+
+QPointF GDALHandler::geoToPixel(const QPointF &geo) const
+{
+    // geo = (lon, lat) for EPSG:4326
+    double invGT[6];
+    if (!GDALInvGeoTransform(geoTransform, invGT)) {
+        return QPointF(); // invalid
+    }
+
+    double Xgeo = geo.x();
+    double Ygeo = geo.y();
+    double px = invGT[0] + Xgeo * invGT[1] + Ygeo * invGT[2];
+    double py = invGT[3] + Xgeo * invGT[4] + Ygeo * invGT[5];
+
+    // Optional: shift to pixel centers if you draw at centers
+    // px -= 0.5;
+    // py -= 0.5;
+
+    return QPointF(px, py);
+}
+
+QPolygonF GDALHandler::geoPolygonToPixels(const QList<QPointF> &geoPts) const
+{
+    QPolygonF pixPoly;
+    pixPoly.reserve(geoPts.size());
+    double invGT[6];
+
+    if (!GDALInvGeoTransform(geoTransform, invGT))
+        return pixPoly;
+
+    for (int i = 0; i < geoPts.size(); ++i) {
+        const QPointF &g = geoPts.at(i);
+        double Xgeo = g.x();
+        double Ygeo = g.y();
+
+        double px = invGT[0] + Xgeo * invGT[1] + Ygeo * invGT[2];
+        double py = invGT[3] + Xgeo * invGT[4] + Ygeo * invGT[5];
+
+        pixPoly << QPointF(px, py);
+    }
+    return pixPoly;
 }

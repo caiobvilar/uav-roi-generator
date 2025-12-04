@@ -15,7 +15,7 @@
   </property>
   <widget class="QWidget" name="centralwidget">
    <layout class="QVBoxLayout" name="verticalLayout">
-    <item alignment="Qt::AlignmentFlag::AlignHCenter">
+    <item>
      <widget class="ROIArea" name="roiArea" native="true">
       <property name="minimumSize">
        <size>
@@ -35,16 +35,9 @@
      </widget>
     </item>
     <item>
-     <widget class="QPushButton" name="pushButton">
-      <property name="text">
-       <string>PushButton</string>
-      </property>
-     </widget>
-    </item>
-    <item alignment="Qt::AlignmentFlag::AlignRight">
      <widget class="QLabel" name="label">
       <property name="text">
-       <string>TextLabel</string>
+       <string>...</string>
       </property>
      </widget>
     </item>
@@ -66,12 +59,22 @@
     <addaction name="actionOpen_File"/>
     <addaction name="actionClose_File"/>
     <addaction name="actionQuit"/>
+    <addaction name="separator"/>
+    <addaction name="actionOpen_GeoJSON_File"/>
    </widget>
    <widget class="QMenu" name="menuOptions">
     <property name="title">
      <string>Options</string>
     </property>
+    <widget class="QMenu" name="menuSave_Drawn_Area">
+     <property name="title">
+      <string>Save Drawn Area</string>
+     </property>
+     <addaction name="actionSIRGAS2000_UTM24S"/>
+     <addaction name="actionWGS84"/>
+    </widget>
     <addaction name="actionAdd_Layer"/>
+    <addaction name="menuSave_Drawn_Area"/>
    </widget>
    <widget class="QMenu" name="menuAbout">
     <property name="title">
@@ -106,6 +109,21 @@
   <action name="actionAdd_Layer">
    <property name="text">
     <string>Add Layer</string>
+   </property>
+  </action>
+  <action name="actionSIRGAS2000_UTM24S">
+   <property name="text">
+    <string>SIRGAS2000/UTM24S</string>
+   </property>
+  </action>
+  <action name="actionWGS84">
+   <property name="text">
+    <string>WGS84</string>
+   </property>
+  </action>
+  <action name="actionOpen_GeoJSON_File">
+   <property name="text">
+    <string>Open GeoJSON File</string>
    </property>
   </action>
  </widget>
