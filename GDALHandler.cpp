@@ -271,7 +271,10 @@ QPointF GDALHandler::geoToPixel(const QPointF &geo) const
 {
     // geo = (lon, lat) for EPSG:4326
     double invGT[6];
-    if (!GDALInvGeoTransform(geoTransform, invGT)) {
+    double gt[6];
+    std::memcpy(gt, geoTransform, sizeof(gt));
+    
+    if (!GDALInvGeoTransform(gt, invGT)) {
         return QPointF(); // invalid
     }
 
@@ -292,8 +295,11 @@ QPolygonF GDALHandler::geoPolygonToPixels(const QList<QPointF> &geoPts) const
     QPolygonF pixPoly;
     pixPoly.reserve(geoPts.size());
     double invGT[6];
+    double gt[6];
+    // Fix for invaid conversion from const double* to double*
+    std::memcpy(gt, geoTransform, sizeof(gt));
 
-    if (!GDALInvGeoTransform(geoTransform, invGT))
+    if (!GDALInvGeoTransform(gt, invGT))
         return pixPoly;
 
     for (int i = 0; i < geoPts.size(); ++i) {

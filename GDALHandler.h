@@ -1,12 +1,14 @@
 #ifndef GDALHANDLER_H
 #define GDALHANDLER_H
-
+#include <QList>
+#include <QPointF>
+#include <QRectF>
+#include <QtMath>
 #include <QDebug>
 #include <QImage>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
-#include <QPointF>
 #include <QString>
 #include <cpl_conv.h> // CPLMalloc
 #include <gdal_priv.h>
@@ -14,6 +16,11 @@
 #include <ogrsf_frmts.h>
 
 #define GEO_TRANSFORM_SIZE 6
+
+struct RotatedRect {
+    QRectF rect;     // axis‑aligned bounding rect of the rotated box
+    double angle;    // orientation of the box in radians
+};
 
 class GDALHandler
 {
@@ -32,7 +39,7 @@ public:
     QList<QPointF> loadPolygonFromGeoJSON(const QString &path);
     QPointF geoToPixel(const QPointF &geo) const;
     QPolygonF geoPolygonToPixels(const QList<QPointF> &geoPts) const;
-
+    
 private:
     GDALDataset *srcDataset = nullptr;
     GDALDataset *destDataset = nullptr;

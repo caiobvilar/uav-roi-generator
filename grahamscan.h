@@ -18,7 +18,7 @@ public:
     QPolygonF ComputeHull();
     void addPointToPolygon(QPointF);
     void clear();
-
+    QList<QPointF> getBasePolygon() const { return polygon; }
 private:
     QList<QPointF> polygon;
 signals:

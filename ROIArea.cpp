@@ -145,7 +145,12 @@ void ROIArea::keyPressEvent(QKeyEvent *event)
 }
 void ROIArea::mousePressEvent(QMouseEvent *event)
 {
-    const QPointF p = event->position();
+    QPointF p = event->position();
+    
+    // Convert display coordinates to image coordinates
+    if (displayScale != 1.0) {
+        p = QPointF(p.x() / displayScale, p.y() / displayScale);
+    }
 
     if (event->button() == Qt::LeftButton) {
         // If a final polygon is visible, start a new one on first left click
@@ -198,11 +203,11 @@ void ROIArea::paintEvent(QPaintEvent *event)
 {
     Q_UNUSED(event);
     QPainter painter(this);
-    painter.fillRect(rect(), Qt::black); // or white
+    painter.fillRect(rect(), Qt::black);
 
+    QPen pen(Qt::red);
     const QImage *img = nullptr;
 
-    // Prefer top overlay if present
     if (!overlayListHandles.isEmpty()) {
         img = overlayListHandles.last();
     } else if (currentImagePtr && !currentImagePtr->isNull()) {
@@ -210,18 +215,36 @@ void ROIArea::paintEvent(QPaintEvent *event)
     }
 
     if (img && !img->isNull()) {
-        painter.drawImage(QPoint(0, 0), *img);
+        QSize widgetSize = size();
+        QSize imageSize = img->size();
+        
+        if (imageSize.width() > widgetSize.width() || imageSize.height() > widgetSize.height()) {
+            QImage scaledImage = img->scaled(widgetSize, Qt::KeepAspectRatio, Qt::SmoothTransformation);
+            // Calculate scale factor for coordinate transformation
+            displayScale = qMin((qreal)widgetSize.width() / imageSize.width(),
+                               (qreal)widgetSize.height() / imageSize.height());
+            painter.drawImage(QPoint(0, 0), scaledImage);
+        } else {
+            displayScale = 1.0;
+            painter.drawImage(QPoint(0, 0), *img);
+        }
     }
 
     if (showFinalPolygon && finalPolygon.size() >= 3) {
         painter.setRenderHint(QPainter::Antialiasing);
-        QPen pen(Qt::red);
         pen.setWidth(2);
         painter.setPen(pen);
         QBrush brush(QColor(255, 0, 0, 80));
         painter.setBrush(brush);
-        painter.drawPolygon(finalPolygon);
+        
+        // Scale polygon for display
+        QPolygonF scaledPoly;
+        for (const QPointF &p : finalPolygon) {
+            scaledPoly << QPointF(p.x() * displayScale, p.y() * displayScale);
+        }
+        painter.drawPolygon(scaledPoly);
     }
+    drawMinimumAreaRectangle(painter, pen);
 }
 
 void ROIArea::resizeEvent(QResizeEvent *event)
@@ -347,9 +370,117 @@ QPolygonF ROIArea::snapPolygon(const QPolygonF &polygon)
     }
     return result;
 }
+
+// This could be improved using QVector2F for dot products
+// or maybe just to be more consistent with the rest of the math.
+double ROIArea::dot(const QPointF &a, const QPointF &b)
+{
+    return a.x() * b.x() + a.y() * b.y();
+}
+
+QPointF ROIArea::perp(const QPointF &v)
+{
+    return QPointF(-v.y(), v.x());
+}
+
+// hull: convex, CCW, size >= 3
+RotatedRect ROIArea::minimumAreaRectangle(const QList<QPointF> &hull)
+{
+    RotatedRect best{QRectF(), 0.0};
+    const int n = hull.size();
+    if (n < 3)
+        return best;
+
+    int k = 1, l = 1, m = 1;
+    double bestArea = std::numeric_limits<double>::infinity();
+
+    for (int i = 0; i < n; ++i) {
+        int i2 = (i + 1) % n;
+        QPointF edge = hull[i2] - hull[i];
+        double len = std::hypot(edge.x(), edge.y());
+        if (len == 0.0)
+            continue;
+
+        QPointF ux(edge.x() / len, edge.y() / len);
+        QPointF uy = perp(ux);
+
+        while (dot(hull[(k + 1) % n] - hull[i], ux) >
+               dot(hull[k] - hull[i], ux))
+            k = (k + 1) % n;
+
+        while (dot(hull[(l + 1) % n] - hull[i], ux) <
+               dot(hull[l] - hull[i], ux))
+            l = (l + 1) % n;
+
+        while (dot(hull[(m + 1) % n] - hull[i], uy) >
+               dot(hull[m] - hull[i], uy))
+            m = (m + 1) % n;
+
+        double maxX = dot(hull[k] - hull[i], ux);
+        double minX = dot(hull[l] - hull[i], ux);
+        double maxY = dot(hull[m] - hull[i], uy);
+        double minY = 0.0;
+
+        double width  = maxX - minX;
+        double height = maxY - minY;
+        double area   = width * height;
+
+        if (area < bestArea) {
+            bestArea = area;
+            best.angle = std::atan2(ux.y(), ux.x());
+
+            QPointF o  = hull[i] + minX * ux + minY * uy;
+            QPointF c0 = o;
+            QPointF c1 = o + width  * ux;
+            QPointF c2 = c1 + height * uy;
+            QPointF c3 = o + height * uy;
+
+            qreal minBx = qMin(qMin(c0.x(), c1.x()), qMin(c2.x(), c3.x()));
+            qreal maxBx = qMax(qMax(c0.x(), c1.x()), qMax(c2.x(), c3.x()));
+            qreal minBy = qMin(qMin(c0.y(), c1.y()), qMin(c2.y(), c3.y()));
+            qreal maxBy = qMax(qMax(c0.y(), c1.y()), qMax(c2.y(), c3.y()));
+
+            best.rect = QRectF(QPointF(minBx, minBy),
+                               QPointF(maxBx, maxBy));
+        }
+    }
+
+    return best;
+}
+
 void ROIArea::setCurrentImage(QImage *settingImage)
 {
     currentImagePtr = settingImage;
+}
+
+void ROIArea::clearPolygon()
+{
+    // Reset all polygon-related state
+    showFinalPolygon = false;
+    isPolygonDrawn = false;
+    finalPolygon = QPolygonF();
+    
+    // Clear drawing state
+    writing = false;
+    haveStartPoint = false;
+    
+    // Clear the Graham scan data
+    grahamScanner.clear();
+    
+    // Optionally: remove the current overlay with drawings and revert to base image
+    if (overlayListHandles.size() > 1) {
+        // Remove top overlay (the one with drawings)
+        overlayList.removeLast();
+        overlayListHandles.removeLast();
+        
+        // Set current image to the previous one (base image or previous overlay)
+        if (!overlayListHandles.isEmpty()) {
+            setCurrentImage(overlayListHandles.last());
+        }
+    }
+    
+    // Trigger repaint
+    update();
 }
 
 const QImage &ROIArea::getCurrentImage() const
@@ -357,10 +488,11 @@ const QImage &ROIArea::getCurrentImage() const
     static QImage empty;
     return currentImagePtr ? *currentImagePtr : empty;
 }
+
 QByteArray ROIArea::exportPolygonGeoJSON() const
 {
     if (finalPolygon.size() < 3) {
-        qWarning() << "Your list of points is less than three = not a polygon.";
+        qWarning() << "Your list of points has less than three elements = not a polygon.";
         return QByteArray(); // nothing to export
     }
 
@@ -576,4 +708,53 @@ void ROIArea::drawGeoPolygonOnCurrentOverlay(const QList<QPointF> &geoPts)
 
     QImage *img = currentImagePtr;
     drawGeoPolygonOnImage(img, geoPts);
+}
+
+void ROIArea::calculateMinimumAreaRectangle()
+{
+    this->ROIPolygonMinAreaRect = this->minimumAreaRectangle(finalPolygon);
+}
+
+
+void ROIArea::drawMinimumAreaRectangle(QPainter &painter, QPen &pen)
+{
+    QPolygonF box = rotatedRectToPolygon(ROIPolygonMinAreaRect);
+    pen.setColor(Qt::yellow);
+    pen.setWidthF(2.0);
+    painter.setPen(pen);
+    painter.setBrush(Qt::NoBrush);
+
+    painter.drawPolygon(box);
+    update();
+}
+
+QPolygonF ROIArea::rotatedRectToPolygon(const RotatedRect &r)
+{
+    // center of axis‑aligned QRectF
+    QPointF c = r.rect.center();
+
+    // half‑sizes
+    const qreal hw = r.rect.width()  / 2.0;
+    const qreal hh = r.rect.height() / 2.0;
+
+    // local, unrotated corner offsets
+    QVector<QPointF> offs = {
+        QPointF(-hw, -hh),
+        QPointF( hw, -hh),
+        QPointF( hw,  hh),
+        QPointF(-hw,  hh)
+    };
+
+    const qreal cs = std::cos(r.angle);
+    const qreal sn = std::sin(r.angle);
+
+    QPolygonF poly;
+    poly.reserve(4);
+    for (const QPointF &o : offs) {
+        // rotate by r.angle around origin, then translate to center
+        QPointF rot(cs * o.x() - sn * o.y(),
+                    sn * o.x() + cs * o.y());
+        poly << (c + rot);
+    }
+    return poly;
 }

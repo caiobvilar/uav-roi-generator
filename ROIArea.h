@@ -32,6 +32,7 @@ public:
     bool isModified() const { return modified; }
     QColor penColor() const { return myPenColor; }
     const QImage &getCurrentImage() const;
+    RotatedRect minimumAreaRectangle(const QList<QPointF> &hull);
     void setCurrentImage(QImage *settingImage);
     void clearPolygon();
     void addOverlay(const QImage &);
@@ -40,6 +41,9 @@ public:
     QList<QPointF> openGeoJSONFilePoints(const QString &filename);
     void drawGeoPolygonOnImage(QImage *img, const QList<QPointF> &geoPts);
     void drawGeoPolygonOnCurrentOverlay(const QList<QPointF> &geoPts);
+    void drawMinimumAreaRectangle(QPainter &painter, QPen &pen);
+    void setPolygonMinAreaRect(RotatedRect rect) { ROIPolygonMinAreaRect = rect; }
+    void calculateMinimumAreaRectangle();
 public slots:
     void clearImage();
 signals:
@@ -53,13 +57,17 @@ protected:
     void resizeEvent(QResizeEvent *event) override;
     void keyPressEvent(QKeyEvent *event) override;
 
+
 private:
     GrahamScan grahamScanner;
     GDALHandler gdalHandler;
     void drawLineTo(const QPointF &endPoint);
     void drawPointTo(const QPointF &endPoint);
     void drawPolygon(const QPolygonF &polygon);
+    QPolygonF rotatedRectToPolygon(const RotatedRect &r);
     QPolygonF snapPolygon(const QPolygonF &poly);
+    double dot(const QPointF &a, const QPointF &b);
+    QPointF perp(const QPointF &v);
     bool modified = false;
     bool writing = false;
     bool haveStartPoint = false;
@@ -74,6 +82,8 @@ private:
     QPointF lastPoint;
     QList<QPointF> pointList;
     QPolygonF finalPolygon;
+    qreal displayScale = 1.0;
+    RotatedRect ROIPolygonMinAreaRect;
 };
 
 #endif

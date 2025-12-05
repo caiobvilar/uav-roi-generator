@@ -25,6 +25,7 @@ private slots:
     void onSaveDrawnAreaTriggeredUTM24S();
     void onSaveDrawnAreaTriggeredWGS84();
     void onOpenGeoJSONAndDrawOnOverlayTriggered();
+    void onCalculateMinAreaRectTriggered();
 
 private:
     Ui::MainWindow *ui;

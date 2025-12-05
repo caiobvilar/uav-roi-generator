@@ -14,6 +14,7 @@ MainWindow::MainWindow(QWidget *parent)
     , ui(new Ui::MainWindow)
 {
     ui->setupUi(this);
+    ui->verticalLayout->setAlignment(ui->roiArea, Qt::AlignCenter);
     connect(ui->actionQuit, &QAction::triggered, this, &MainWindow::close);
     connect(ui->actionOpen_File, &QAction::triggered, this, &MainWindow::onOpenFileTriggered);
     connect(ui->actionClose_File, &QAction::triggered, this, &MainWindow::onCloseFileTriggered);
@@ -27,6 +28,10 @@ MainWindow::MainWindow(QWidget *parent)
             &QAction::triggered,
             this,
             &MainWindow::onOpenGeoJSONFileTriggered);
+    connect(ui->actionCalculate_Min_Area_Rectangle,
+            &QAction::triggered,
+            this,
+            &MainWindow::onCalculateMinAreaRectTriggered);
 }
 
 MainWindow::~MainWindow()
@@ -97,4 +102,9 @@ void MainWindow::onOpenGeoJSONAndDrawOnOverlayTriggered()
 
     // Draw into the current overlay
     ui->roiArea->drawGeoPolygonOnCurrentOverlay(pts);
+}
+
+void MainWindow::onCalculateMinAreaRectTriggered()
+{
+    ui->roiArea->calculateMinimumAreaRectangle();
 }
