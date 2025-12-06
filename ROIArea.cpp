@@ -200,8 +200,11 @@ void ROIArea::mousePressEvent(QMouseEvent *event)
 }
 void ROIArea::wheelEvent(QWheelEvent *event)
 {
-    constexpr qreal zoomStep = 1.15;
-
+    constexpr qreal zoomStep = 1.001; // fine control
+    if(panning) {
+        QWidget::wheelEvent(event);
+        return;
+    }
     if (event->angleDelta().y() > 0)
         zoomFactor *= zoomStep;
     else
@@ -213,6 +216,7 @@ void ROIArea::wheelEvent(QWheelEvent *event)
 }
 void ROIArea::mouseMoveEvent(QMouseEvent *event)
 {
+    
     if (panning) {
         QPoint delta = event->pos() - lastPanPos;
         lastPanPos = event->pos();
