@@ -13,7 +13,7 @@ ROIArea::ROIArea(QWidget *parent)
     this->setMinimumWidth(1000);
     // 1. Create and store an initial empty base image
     QImage baseImage(size(), QImage::Format_ARGB32_Premultiplied);
-    baseImage.fill(Qt::white); // or Qt::transparent
+    baseImage.fill(Qt::transparent); // or Qt::transparent
 
     overlayList.append(baseImage);     // owned storage
     QImage *ptr = &overlayList.last(); // pointer handle
@@ -35,25 +35,27 @@ bool ROIArea::openImage(const QString &fileName)
         CPLErr errClass = CPLGetLastErrorType();
         int errNo = CPLGetLastErrorNo();
         const char *msg = CPLGetLastErrorMsg();
-        qWarning() << "GDAL error [" << errNo << "/" << errClass << "]:" << msg;
+        qDebug() << "GDAL error [" << errNo << "/" << errClass << "]:" << msg;
         return false;
     }
 
     loadedImage = gdalHandler.toQImage();
     if (loadedImage.isNull()) {
-        qWarning() << "Image was null after GDAL conversion";
+        qDebug() << "Image was null after GDAL conversion";
         return false;
     }
 
     // Option 2: store by value, keep pointer handle
-    overlayList.append(loadedImage);   // owns the image
-    QImage *ptr = &overlayList.last(); // pointer to stored image
+    overlayList.clear();
+    overlayListHandles.clear();
 
-    overlayListHandles.append(ptr); // track handle stack
-    setCurrentImage(ptr);           // currentImagePtr = ptr;
+    overlayList.append(loadedImage); // base image only
+    QImage *ptr = &overlayList.last();
+    overlayListHandles.append(ptr);
+    setCurrentImage(ptr);
 
-    modified = false;
-    emit StatusMessageChanged(gdalHandler.getDataSetCRSInfo());
+    canDrawOnImage = false; // precisa de overlay
+    emit StatusMessageChanged(tr("Drawing disabled: add new layer"));
     update();
     return true;
 }
@@ -76,13 +78,14 @@ bool ROIArea::closeImage()
 
     // Create a new blank white image as background
     QImage blank(size(), QImage::Format_ARGB32_Premultiplied);
-    blank.fill(Qt::white); // white background
+    blank.fill(Qt::transparent); // white background
 
     overlayList.append(blank);         // own it
     QImage *ptr = &overlayList.last(); // pointer handle
     overlayListHandles.append(ptr);
     currentImagePtr = ptr; // make it current
-
+    canDrawOnImage = false;
+    emit StatusMessageChanged(tr("Drawing disabled: image closed"));
     update(); // repaint
     return true;
 }
@@ -132,8 +135,8 @@ void ROIArea::keyPressEvent(QKeyEvent *event)
             showFinalPolygon = !finalPolygon.isEmpty()
                                && finalPolygon.size() >= 3; // only if it’s a real polygon
             isPolygonDrawn = showFinalPolygon;
-            qWarning() << "finalPolygon size =" << finalPolygon.size()
-                       << " showFinalPolygon =" << showFinalPolygon;
+            qDebug() << "finalPolygon size =" << finalPolygon.size()
+                     << " showFinalPolygon =" << showFinalPolygon;
             update(); // triggers paintEvent
         }
         break;
@@ -145,15 +148,25 @@ void ROIArea::keyPressEvent(QKeyEvent *event)
 }
 void ROIArea::mousePressEvent(QMouseEvent *event)
 {
-    QPointF p = event->position();
-    
-    // Convert display coordinates to image coordinates
-    if (displayScale != 1.0) {
-        p = QPointF(p.x() / displayScale, p.y() / displayScale);
+    QPointF pWidget = event->position();
+
+    if (!canDrawOnImage) {
+        QWidget::mousePressEvent(event);
+        return;
     }
 
+    if (event->button() == Qt::MiddleButton) {
+        panning = true;
+        lastPanPos = event->pos();
+        setCursor(Qt::ClosedHandCursor);
+        update();
+        return;
+    }
+
+    // Convert to image coordinates for drawing and geometry
+    QPointF p = toImageCoords(pWidget);
+
     if (event->button() == Qt::LeftButton) {
-        // If a final polygon is visible, start a new one on first left click
         if (showFinalPolygon) {
             showFinalPolygon = false;
             isPolygonDrawn = false;
@@ -162,25 +175,22 @@ void ROIArea::mousePressEvent(QMouseEvent *event)
         }
 
         writing = true;
-        grahamScanner.addPointToPolygon(p);
-        drawPointTo(p);
+        grahamScanner.addPointToPolygon(p); // image coords
+        drawPointTo(p);                     // image coords
 
         if (!haveStartPoint) {
-            startPoint = p; // remember first point
+            startPoint = p;
             lastPoint = p;
             haveStartPoint = true;
         } else {
-            drawLineTo(p);
+            drawLineTo(p); // image coords
         }
 
         update();
     } else if (event->button() == Qt::RightButton && haveStartPoint) {
-        // Snap last point to first and draw closing segment
         QPointF snapped = startPoint;
-
-        grahamScanner.addPointToPolygon(snapped); // store snapped point
-        drawLineTo(snapped);                      // draw closing edge
-
+        grahamScanner.addPointToPolygon(snapped);
+        drawLineTo(snapped);
         writing = false;
         haveStartPoint = false;
         update();
@@ -188,14 +198,40 @@ void ROIArea::mousePressEvent(QMouseEvent *event)
 
     QWidget::mousePressEvent(event);
 }
+void ROIArea::wheelEvent(QWheelEvent *event)
+{
+    constexpr qreal zoomStep = 1.15;
 
+    if (event->angleDelta().y() > 0)
+        zoomFactor *= zoomStep;
+    else
+        zoomFactor /= zoomStep;
+
+    zoomFactor = qBound<qreal>(0.1, zoomFactor, 20.0);
+    update();
+    QWidget::wheelEvent(event);
+}
 void ROIArea::mouseMoveEvent(QMouseEvent *event)
 {
+    if (panning) {
+        QPoint delta = event->pos() - lastPanPos;
+        lastPanPos = event->pos();
+        panOffset += delta; // pan in widget pixels
+        update();
+        return;
+    }
     QWidget::mouseMoveEvent(event);
 }
 
 void ROIArea::mouseReleaseEvent(QMouseEvent *event)
 {
+    if (event->button() == Qt::MiddleButton && panning) {
+        panning = false;
+        setCursor(Qt::ArrowCursor);
+        update();
+        return;
+    }
+
     QWidget::mouseReleaseEvent(event);
 }
 
@@ -205,46 +241,30 @@ void ROIArea::paintEvent(QPaintEvent *event)
     QPainter painter(this);
     painter.fillRect(rect(), Qt::black);
 
-    QPen pen(Qt::red);
-    const QImage *img = nullptr;
+    if (!currentImagePtr || currentImagePtr->isNull())
+        return;
 
-    if (!overlayListHandles.isEmpty()) {
-        img = overlayListHandles.last();
-    } else if (currentImagePtr && !currentImagePtr->isNull()) {
-        img = currentImagePtr;
-    }
+    painter.save();
 
-    if (img && !img->isNull()) {
-        QSize widgetSize = size();
-        QSize imageSize = img->size();
-        
-        if (imageSize.width() > widgetSize.width() || imageSize.height() > widgetSize.height()) {
-            QImage scaledImage = img->scaled(widgetSize, Qt::KeepAspectRatio, Qt::SmoothTransformation);
-            // Calculate scale factor for coordinate transformation
-            displayScale = qMin((qreal)widgetSize.width() / imageSize.width(),
-                               (qreal)widgetSize.height() / imageSize.height());
-            painter.drawImage(QPoint(0, 0), scaledImage);
-        } else {
-            displayScale = 1.0;
-            painter.drawImage(QPoint(0, 0), *img);
-        }
-    }
+    painter.translate(panOffset);
+    painter.scale(zoomFactor, zoomFactor);
+
+    painter.drawImage(QPoint(0, 0), *currentImagePtr);
 
     if (showFinalPolygon && finalPolygon.size() >= 3) {
         painter.setRenderHint(QPainter::Antialiasing);
-        pen.setWidth(2);
+
+        QPen pen(Qt::red);
+        pen.setWidthF(2.0 / zoomFactor);
         painter.setPen(pen);
         QBrush brush(QColor(255, 0, 0, 80));
         painter.setBrush(brush);
-        
-        // Scale polygon for display
-        QPolygonF scaledPoly;
-        for (const QPointF &p : finalPolygon) {
-            scaledPoly << QPointF(p.x() * displayScale, p.y() * displayScale);
-        }
-        painter.drawPolygon(scaledPoly);
+
+        painter.drawPolygon(finalPolygon);      // image coords
+        drawMinimumAreaRectangle(painter, pen); // same coords
     }
-    drawMinimumAreaRectangle(painter, pen);
+
+    painter.restore();
 }
 
 void ROIArea::resizeEvent(QResizeEvent *event)
@@ -255,13 +275,17 @@ void ROIArea::resizeEvent(QResizeEvent *event)
     QWidget::resizeEvent(event);
     update();
 }
-
+QPointF ROIArea::toImageCoords(const QPointF &pWidget) const
+{
+    // Inverse of: translate(panOffset) + scale(zoomFactor, zoomFactor)
+    QPointF p = pWidget;
+    p -= panOffset;  // undo translation (widget pixels)
+    p /= zoomFactor; // undo scaling (zoom)
+    return p;        // image-space point
+}
 void ROIArea::drawPointTo(const QPointF &endPoint)
 {
-    qWarning() << "Triggered drawPointTo()";
-
-    // 1. Ensure there is a current image to draw on
-    if (!currentImagePtr || currentImagePtr->isNull())
+    if (!canDrawOnImage || !currentImagePtr || currentImagePtr->isNull())
         return;
 
     QPainter painter(currentImagePtr);
@@ -269,20 +293,16 @@ void ROIArea::drawPointTo(const QPointF &endPoint)
         return;
 
     painter.setPen(QPen(myPenColor, penWidth, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin));
-    painter.drawPoint(endPoint);
+    painter.drawPoint(endPoint); // endPoint in image coords
 
     modified = true;
-
     int rad = (penWidth / 2) + 2;
     update(QRect(endPoint.x() - rad, endPoint.y() - rad, 2 * rad + 1, 2 * rad + 1));
 }
 
 void ROIArea::drawLineTo(const QPointF &endPoint)
 {
-    qWarning() << "Triggered drawLineTo()";
-
-    // 1. Ensure there is a current image to draw on
-    if (!currentImagePtr || currentImagePtr->isNull())
+    if (!canDrawOnImage || !currentImagePtr || currentImagePtr->isNull())
         return;
 
     QPainter painter(currentImagePtr);
@@ -290,43 +310,29 @@ void ROIArea::drawLineTo(const QPointF &endPoint)
         return;
 
     painter.setPen(QPen(penColor(), penWidth / 2.0, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin));
-    painter.drawLine(lastPoint, endPoint);
+    painter.drawLine(lastPoint, endPoint); // both in image coords
 
     int rad = (penWidth / 2) + 2;
     update(
         QRect(lastPoint.toPoint(), endPoint.toPoint()).normalized().adjusted(-rad, -rad, +rad, +rad));
 
-    lastPoint = endPoint; // to chain segments
+    lastPoint = endPoint;
 }
 
 void ROIArea::drawPolygon(const QPolygonF &polygon)
 {
-    // Ensure there is a current image to draw on
-    if (!currentImagePtr || currentImagePtr->isNull())
+    if (!canDrawOnImage)
         return;
 
-    QPainter painter(currentImagePtr);
-    if (!painter.isActive())
-        return;
+    // Store polygon in image coordinates
+    finalPolygon = polygon;
+    showFinalPolygon = (finalPolygon.size() >= 3);
 
-    painter.setRenderHint(QPainter::Antialiasing);
-
-    // Pen for the outline
-    QPen pen(Qt::blue);
-    pen.setWidth(2);
-    painter.setPen(pen);
-
-    // Brush for the area (fill)
-    QBrush brush(QColor(0, 0, 255, 80)); // semi‑transparent blue
-    painter.setBrush(brush);
-
-    painter.drawPolygon(polygon);
-
-    update(); // repaint to show the change
+    update(); // triggers paintEvent, which draws with zoom/pan
 }
 void ROIArea::addOverlay(const QImage &baseImage)
 {
-    qWarning() << "Triggered addOverlay";
+    qDebug() << "Triggered addOverlay";
 
     if (baseImage.isNull() || baseImage.size().isEmpty())
         return;
@@ -357,6 +363,36 @@ void ROIArea::addOverlay(const QImage &baseImage)
     QImage *ptr = &overlayList.last();
     overlayListHandles.append(ptr);
     setCurrentImage(ptr);
+    canDrawOnImage = true; // allow drawing now
+    emit StatusMessageChanged(tr("Drawing enabled: layer added"));
+    update();
+}
+void ROIArea::removeOverlay()
+{
+    qDebug() << Q_FUNC_INFO << "overlayList size =" << overlayList.size();
+
+    // Keep the base image (index 0) always; only remove if there's > 1
+    if (overlayList.size() <= 1 || overlayListHandles.size() <= 1)
+        return;
+
+    // Remove top overlay
+    overlayList.removeLast();
+    overlayListHandles.removeLast();
+
+    // Point to previous image (could be another overlay or the base)
+    currentImagePtr = overlayListHandles.last();
+
+    // Allow drawing only if there is still at least one overlay
+    canDrawOnImage = (overlayListHandles.size() > 1);
+
+    if (!canDrawOnImage) {
+        // No more drawable layers: clear polygon overlay state
+        showFinalPolygon = false;
+        isPolygonDrawn = false;
+        finalPolygon = QPolygonF();
+        grahamScanner.clear();
+        emit StatusMessageChanged(tr("Drawing disabled: add new layer"));
+    }
 
     update();
 }
@@ -386,12 +422,11 @@ QPointF ROIArea::perp(const QPointF &v)
 // hull: convex, CCW, size >= 3
 RotatedRect ROIArea::minimumAreaRectangle(const QList<QPointF> &hull)
 {
-    RotatedRect best{QRectF(), 0.0};
+        RotatedRect best{};
     const int n = hull.size();
     if (n < 3)
         return best;
 
-    int k = 1, l = 1, m = 1;
     double bestArea = std::numeric_limits<double>::infinity();
 
     for (int i = 0; i < n; ++i) {
@@ -401,47 +436,54 @@ RotatedRect ROIArea::minimumAreaRectangle(const QList<QPointF> &hull)
         if (len == 0.0)
             continue;
 
+        // Orthonormal basis for this orientation
         QPointF ux(edge.x() / len, edge.y() / len);
         QPointF uy = perp(ux);
 
-        while (dot(hull[(k + 1) % n] - hull[i], ux) >
-               dot(hull[k] - hull[i], ux))
-            k = (k + 1) % n;
+        // Project *all* hull points onto this basis
+        double minX =  std::numeric_limits<double>::infinity();
+        double maxX = -std::numeric_limits<double>::infinity();
+        double minY =  std::numeric_limits<double>::infinity();
+        double maxY = -std::numeric_limits<double>::infinity();
 
-        while (dot(hull[(l + 1) % n] - hull[i], ux) <
-               dot(hull[l] - hull[i], ux))
-            l = (l + 1) % n;
-
-        while (dot(hull[(m + 1) % n] - hull[i], uy) >
-               dot(hull[m] - hull[i], uy))
-            m = (m + 1) % n;
-
-        double maxX = dot(hull[k] - hull[i], ux);
-        double minX = dot(hull[l] - hull[i], ux);
-        double maxY = dot(hull[m] - hull[i], uy);
-        double minY = 0.0;
+        for (int k = 0; k < n; ++k) {
+            const QPointF &p = hull[k];
+            double px = dot(p, ux);
+            double py = dot(p, uy);
+            if (px < minX) minX = px;
+            if (px > maxX) maxX = px;
+            if (py < minY) minY = py;
+            if (py > maxY) maxY = py;
+        }
 
         double width  = maxX - minX;
         double height = maxY - minY;
-        double area   = width * height;
+        if (width <= 0.0 || height <= 0.0)
+            continue;
 
+        double area = width * height;
         if (area < bestArea) {
             bestArea = area;
+
+            best.ux = ux;
+            best.uy = uy;
+            best.width  = width;
+            best.height = height;
             best.angle = std::atan2(ux.y(), ux.x());
 
-            QPointF o  = hull[i] + minX * ux + minY * uy;
-            QPointF c0 = o;
+            // Origin at (minX, minY) in world/image coords
+            best.origin = minX * ux + minY * uy;
+
+            // Optional axis‑aligned bounding rect
+            QPointF o  = best.origin;
             QPointF c1 = o + width  * ux;
             QPointF c2 = c1 + height * uy;
             QPointF c3 = o + height * uy;
-
-            qreal minBx = qMin(qMin(c0.x(), c1.x()), qMin(c2.x(), c3.x()));
-            qreal maxBx = qMax(qMax(c0.x(), c1.x()), qMax(c2.x(), c3.x()));
-            qreal minBy = qMin(qMin(c0.y(), c1.y()), qMin(c2.y(), c3.y()));
-            qreal maxBy = qMax(qMax(c0.y(), c1.y()), qMax(c2.y(), c3.y()));
-
-            best.rect = QRectF(QPointF(minBx, minBy),
-                               QPointF(maxBx, maxBy));
+            qreal minBx = std::min({o.x(),  c1.x(), c2.x(), c3.x()});
+            qreal maxBx = std::max({o.x(),  c1.x(), c2.x(), c3.x()});
+            qreal minBy = std::min({o.y(),  c1.y(), c2.y(), c3.y()});
+            qreal maxBy = std::max({o.y(),  c1.y(), c2.y(), c3.y()});
+            best.rect = QRectF(QPointF(minBx, minBy), QPointF(maxBx, maxBy));
         }
     }
 
@@ -492,7 +534,7 @@ const QImage &ROIArea::getCurrentImage() const
 QByteArray ROIArea::exportPolygonGeoJSON() const
 {
     if (finalPolygon.size() < 3) {
-        qWarning() << "Your list of points has less than three elements = not a polygon.";
+        qDebug() << "Your list of points has less than three elements = not a polygon.";
         return QByteArray(); // nothing to export
     }
 
@@ -544,7 +586,7 @@ void ROIArea::saveGEOJson(QByteArray &document)
             f.write(json);
 
         f.close();
-        qWarning() << "Written data to: " << fileName.toStdString();
+        qDebug() << "Written data to: " << fileName.toStdString();
     }
 }
 
@@ -636,14 +678,14 @@ void ROIArea::drawGeoPolygonOnImage(QImage *img, const QList<QPointF> &geoPts)
 {
     qInfo() << Q_FUNC_INFO << "IS THIS BEING CALLED AT ALL?????";
     if (!img || img->isNull()) {
-        qWarning() << "drawGeoPolygonOnImage: null image";
+        qDebug() << "drawGeoPolygonOnImage: null image";
         return;
     }
 
     // Convert QList<QPointF> to QPolygonF in pixel space
     QPolygonF pixPoly = gdalHandler.geoPolygonToPixels(geoPts); // change overload accordingly
 
-    qWarning() << "geoPts count =" << geoPts.size() << "pixPoly count =" << pixPoly.size();
+    qDebug() << "geoPts count =" << geoPts.size() << "pixPoly count =" << pixPoly.size();
 
     // Image size
     const int w = img->width();
@@ -651,7 +693,7 @@ void ROIArea::drawGeoPolygonOnImage(QImage *img, const QList<QPointF> &geoPts)
 
     // Compute polygon bounding box
     if (pixPoly.isEmpty()) {
-        qWarning() << "pixPoly is empty";
+        qDebug() << "pixPoly is empty";
         return;
     }
 
@@ -668,23 +710,23 @@ void ROIArea::drawGeoPolygonOnImage(QImage *img, const QList<QPointF> &geoPts)
         maxY = qMax(maxY, p.y());
     }
 
-    qWarning() << "Image size:" << w << "x" << h;
-    qWarning() << "Polygon bbox: x[" << minX << "," << maxX << "] y[" << minY << "," << maxY << "]";
+    qDebug() << "Image size:" << w << "x" << h;
+    qDebug() << "Polygon bbox: x[" << minX << "," << maxX << "] y[" << minY << "," << maxY << "]";
 
     if (maxX < 0 || maxY < 0 || minX >= w || minY >= h) {
-        qWarning() << "Polygon completely outside image bounds -> not visible";
+        qDebug() << "Polygon completely outside image bounds -> not visible";
         return; // early‑out so you know it's off‑image
     }
 
     // Optionally log first few vertices
     for (int i = 0; i < pixPoly.size() && i < 5; ++i)
-        qWarning() << "pix" << i << pixPoly.at(i);
+        qDebug() << "pix" << i << pixPoly.at(i);
     for (int i = 0; i < pixPoly.size() && i < 3; ++i)
-        qWarning() << "pix" << i << pixPoly.at(i);
+        qDebug() << "pix" << i << pixPoly.at(i);
 
     QPainter p(img);
     if (!p.isActive()) {
-        qWarning() << "drawGeoPolygonOnImage: painter not active";
+        qDebug() << "drawGeoPolygonOnImage: painter not active";
         return;
     }
 
@@ -702,7 +744,7 @@ void ROIArea::drawGeoPolygonOnCurrentOverlay(const QList<QPointF> &geoPts)
 {
     emit StatusMessageChanged(QString(Q_FUNC_INFO));
     if (overlayListHandles.isEmpty()) {
-        qWarning() << "overlayList is empty.";
+        qDebug() << "overlayList is empty.";
         return;
     }
 
@@ -712,49 +754,54 @@ void ROIArea::drawGeoPolygonOnCurrentOverlay(const QList<QPointF> &geoPts)
 
 void ROIArea::calculateMinimumAreaRectangle()
 {
-    this->ROIPolygonMinAreaRect = this->minimumAreaRectangle(finalPolygon);
+    if (finalPolygon.size() < 3)
+        return;
+
+    // Remove the duplicate closing point if it exists
+    QList<QPointF> hull;
+    for (int i = 0; i < finalPolygon.size(); ++i) {
+        hull.append(finalPolygon[i]);
+    }
+    
+    // If last point equals first point, remove it
+    if (!hull.isEmpty() && hull.size() > 1) {
+        if (hull.first() == hull.last()) {
+            hull.removeLast();
+        }
+    }
+    
+    ROIPolygonMinAreaRect = minimumAreaRectangle(hull); // image coords
+    update(); // request repaint so paintEvent draws it
 }
-
-
 void ROIArea::drawMinimumAreaRectangle(QPainter &painter, QPen &pen)
 {
+    // Rectangle in image coordinates
     QPolygonF box = rotatedRectToPolygon(ROIPolygonMinAreaRect);
+
     pen.setColor(Qt::yellow);
-    pen.setWidthF(2.0);
+    pen.setWidthF(2.0 / zoomFactor); // keep thickness with zoom
     painter.setPen(pen);
     painter.setBrush(Qt::NoBrush);
 
-    painter.drawPolygon(box);
-    update();
+    painter.drawPolygon(box); // image-space polygon, zoom/pan already applied
 }
 
 QPolygonF ROIArea::rotatedRectToPolygon(const RotatedRect &r)
 {
-    // center of axis‑aligned QRectF
-    QPointF c = r.rect.center();
-
-    // half‑sizes
-    const qreal hw = r.rect.width()  / 2.0;
-    const qreal hh = r.rect.height() / 2.0;
-
-    // local, unrotated corner offsets
-    QVector<QPointF> offs = {
-        QPointF(-hw, -hh),
-        QPointF( hw, -hh),
-        QPointF( hw,  hh),
-        QPointF(-hw,  hh)
-    };
-
-    const qreal cs = std::cos(r.angle);
-    const qreal sn = std::sin(r.angle);
-
     QPolygonF poly;
     poly.reserve(4);
-    for (const QPointF &o : offs) {
-        // rotate by r.angle around origin, then translate to center
-        QPointF rot(cs * o.x() - sn * o.y(),
-                    sn * o.x() + cs * o.y());
-        poly << (c + rot);
-    }
+
+    const QPointF &o = r.origin;
+    const QPointF &ux = r.ux;
+    const QPointF &uy = r.uy;
+    qreal w = r.width;
+    qreal h = r.height;
+
+    QPointF c0 = o;
+    QPointF c1 = o + w * ux;
+    QPointF c2 = c1 + h * uy;
+    QPointF c3 = o + h * uy;
+
+    poly << c0 << c1 << c2 << c3;
     return poly;
 }

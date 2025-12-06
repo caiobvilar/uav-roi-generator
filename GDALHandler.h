@@ -17,11 +17,6 @@
 
 #define GEO_TRANSFORM_SIZE 6
 
-struct RotatedRect {
-    QRectF rect;     // axis‑aligned bounding rect of the rotated box
-    double angle;    // orientation of the box in radians
-};
-
 class GDALHandler
 {
 public:

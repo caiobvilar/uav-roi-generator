@@ -20,6 +20,7 @@ private slots:
     void onOpenGeoJSONFileTriggered();
     void onCloseFileTriggered();
     void onAddLayerTriggered();
+    void onRemoveOverlayTriggered();
 
     void onStatusMessageChanged(const QString &text);
     void onSaveDrawnAreaTriggeredUTM24S();

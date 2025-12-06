@@ -14,11 +14,17 @@ MainWindow::MainWindow(QWidget *parent)
     , ui(new Ui::MainWindow)
 {
     ui->setupUi(this);
+    setWindowTitle("ROIGenerator");
     ui->verticalLayout->setAlignment(ui->roiArea, Qt::AlignCenter);
+    connect(ui->roiArea, &ROIArea::StatusMessageChanged, this, &MainWindow::onStatusMessageChanged);
     connect(ui->actionQuit, &QAction::triggered, this, &MainWindow::close);
     connect(ui->actionOpen_File, &QAction::triggered, this, &MainWindow::onOpenFileTriggered);
     connect(ui->actionClose_File, &QAction::triggered, this, &MainWindow::onCloseFileTriggered);
-    connect(ui->actionAdd_Layer, &QAction::triggered, this, &MainWindow::onAddLayerTriggered);
+    connect(ui->actionAdd_Layer_2, &QAction::triggered, this, &MainWindow::onAddLayerTriggered);
+    connect(ui->actionRemove_Layer,
+            &QAction::triggered,
+            this,
+            &MainWindow::onRemoveOverlayTriggered);
     connect(ui->actionSIRGAS2000_UTM24S,
             &QAction::triggered,
             this,
@@ -28,7 +34,7 @@ MainWindow::MainWindow(QWidget *parent)
             &QAction::triggered,
             this,
             &MainWindow::onOpenGeoJSONFileTriggered);
-    connect(ui->actionCalculate_Min_Area_Rectangle,
+    connect(ui->actionCalculate_Minimum_Area_Rectangle,
             &QAction::triggered,
             this,
             &MainWindow::onCalculateMinAreaRectTriggered);
@@ -56,6 +62,10 @@ void MainWindow::onOpenFileTriggered()
 void MainWindow::onAddLayerTriggered()
 {
     ui->roiArea->addOverlay(ui->roiArea->getCurrentImage());
+}
+void MainWindow::onRemoveOverlayTriggered()
+{
+    ui->roiArea->removeOverlay();
 }
 void MainWindow::onCloseFileTriggered()
 {

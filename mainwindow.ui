@@ -73,8 +73,16 @@
      <addaction name="actionSIRGAS2000_UTM24S"/>
      <addaction name="actionWGS84"/>
     </widget>
-    <addaction name="actionAdd_Layer"/>
+    <widget class="QMenu" name="menuLayer">
+     <property name="title">
+      <string>Layer</string>
+     </property>
+     <addaction name="actionAdd_Layer_2"/>
+     <addaction name="actionRemove_Layer"/>
+    </widget>
+    <addaction name="menuLayer"/>
     <addaction name="menuSave_Drawn_Area"/>
+    <addaction name="actionCalculate_Minimum_Area_Rectangle"/>
    </widget>
    <widget class="QMenu" name="menuAbout">
     <property name="title">
@@ -106,11 +114,6 @@
     <string>Quit</string>
    </property>
   </action>
-  <action name="actionAdd_Layer">
-   <property name="text">
-    <string>Add Layer</string>
-   </property>
-  </action>
   <action name="actionSIRGAS2000_UTM24S">
    <property name="text">
     <string>SIRGAS2000/UTM24S</string>
@@ -124,6 +127,21 @@
   <action name="actionOpen_GeoJSON_File">
    <property name="text">
     <string>Open GeoJSON File</string>
+   </property>
+  </action>
+  <action name="actionCalculate_Minimum_Area_Rectangle">
+   <property name="text">
+    <string>Calculate Minimum Area Rectangle</string>
+   </property>
+  </action>
+  <action name="actionAdd_Layer_2">
+   <property name="text">
+    <string>Add Layer</string>
+   </property>
+  </action>
+  <action name="actionRemove_Layer">
+   <property name="text">
+    <string>Remove Layer</string>
    </property>
   </action>
  </widget>
