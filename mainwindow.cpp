@@ -73,14 +73,16 @@ void MainWindow::onCloseFileTriggered()
 }
 void MainWindow::onSaveDrawnAreaTriggeredUTM24S()
 {
-    QByteArray tempDocUTM24S = ui->roiArea->exportPolygonGeoJSON();
-    ui->roiArea->saveGEOJson(tempDocUTM24S);
+    // Remove this function or rename it to just save (it's now always WGS84)
+    QByteArray geoJson = ui->roiArea->exportPolygonGeoJSON();
+    ui->roiArea->saveGEOJson(geoJson);
 }
+
 void MainWindow::onSaveDrawnAreaTriggeredWGS84()
 {
-    QByteArray tempDocWGS84 = ui->roiArea->exportPolygonGeoJSON();
-    tempDocWGS84 = ui->roiArea->reprojectGeoJSONPolygon(tempDocWGS84);
-    ui->roiArea->saveGEOJson(tempDocWGS84);
+    // This can now be the same as above, or you can remove one
+    QByteArray geoJson = ui->roiArea->exportPolygonGeoJSON();
+    ui->roiArea->saveGEOJson(geoJson);
 }
 void MainWindow::onOpenGeoJSONFileTriggered()
 {

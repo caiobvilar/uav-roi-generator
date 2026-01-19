@@ -6,8 +6,8 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>1017</width>
-    <height>907</height>
+    <width>1019</width>
+    <height>955</height>
    </rect>
   </property>
   <property name="windowTitle">
@@ -35,6 +35,9 @@
      </widget>
     </item>
     <item>
+     <widget class="QListWidget" name="listWidget"/>
+    </item>
+    <item>
      <widget class="QLabel" name="label">
       <property name="text">
        <string>...</string>
@@ -48,7 +51,7 @@
     <rect>
      <x>0</x>
      <y>0</y>
-     <width>1017</width>
+     <width>1019</width>
      <height>19</height>
     </rect>
    </property>
@@ -84,14 +87,8 @@
     <addaction name="menuSave_Drawn_Area"/>
     <addaction name="actionCalculate_Minimum_Area_Rectangle"/>
    </widget>
-   <widget class="QMenu" name="menuAbout">
-    <property name="title">
-     <string>About</string>
-    </property>
-   </widget>
    <addaction name="menuFile"/>
    <addaction name="menuOptions"/>
-   <addaction name="menuAbout"/>
   </widget>
   <widget class="QStatusBar" name="statusbar"/>
   <action name="actionAbout">

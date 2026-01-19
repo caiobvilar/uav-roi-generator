@@ -174,16 +174,76 @@ QJsonDocument GDALHandler::reprojectGeoJSONPolygon(const QJsonDocument &srcDoc) 
 
     QJsonArray ring = coords.at(0).toArray(); // first linear ring
 
-    // --- set up CRS transform: EPSG:31984 -> EPSG:4326 ---
+    // --- Detect source CRS ---
     OGRSpatialReference srcSRS, dstSRS;
-    if (srcSRS.importFromEPSG(31984) != OGRERR_NONE)
+    
+    // Try to get CRS from the dataset (if raster is loaded)
+    if (srcDataset) {
+        const char *wkt = srcDataset->GetProjectionRef();
+        if (wkt && std::strlen(wkt) > 0) {
+            if (srcSRS.importFromWkt(wkt) != OGRERR_NONE) {
+                qWarning() << "Failed to import CRS from dataset, trying properties...";
+                srcSRS.Clear();
+            }
+        }
+    }
+    
+    // If no dataset CRS, try to get from GeoJSON properties
+    if (srcSRS.IsEmpty()) {
+        QJsonObject props = feature.value("properties").toObject();
+        
+        // Try EPSG code from properties
+        if (props.contains("crs_code")) {
+            int epsgCode = props.value("crs_code").toInt();
+            if (epsgCode > 0) {
+                if (srcSRS.importFromEPSG(epsgCode) != OGRERR_NONE) {
+                    qWarning() << "Failed to import EPSG:" << epsgCode;
+                    srcSRS.Clear();
+                }
+            }
+        }
+        
+        // Try CRS from top-level "crs" member (older GeoJSON spec)
+        if (srcSRS.IsEmpty() && fc.contains("crs")) {
+            QJsonObject crsObj = fc.value("crs").toObject();
+            QJsonObject crsProps = crsObj.value("properties").toObject();
+            QString crsName = crsProps.value("name").toString();
+            
+            if (!crsName.isEmpty()) {
+                if (srcSRS.SetFromUserInput(crsName.toUtf8().constData()) != OGRERR_NONE) {
+                    qWarning() << "Failed to parse CRS:" << crsName;
+                    srcSRS.Clear();
+                }
+            }
+        }
+    }
+    
+    // Default to SIRGAS 2000 / UTM zone 24S (EPSG:31984) if still no CRS found
+    if (srcSRS.IsEmpty()) {
+        qWarning() << "No CRS found in GeoJSON or dataset, defaulting to EPSG:31984";
+        if (srcSRS.importFromEPSG(31984) != OGRERR_NONE) {
+            qWarning() << "Failed to set default EPSG:31984";
+            return QJsonDocument();
+        }
+    }
+    
+    // Set destination to WGS84
+    if (dstSRS.importFromEPSG(4326) != OGRERR_NONE) {
+        qWarning() << "Failed to import EPSG:4326 (WGS84)";
         return QJsonDocument();
-    if (dstSRS.importFromEPSG(4326) != OGRERR_NONE)
-        return QJsonDocument();
+    }
+    
+    // Check if source is already WGS84
+    if (srcSRS.IsSame(&dstSRS)) {
+        qDebug() << "Source CRS is already WGS84, no reprojection needed";
+        return srcDoc; // Return as-is
+    }
 
     OGRCoordinateTransformation *ct = OGRCreateCoordinateTransformation(&srcSRS, &dstSRS);
-    if (!ct)
+    if (!ct) {
+        qWarning() << "Failed to create coordinate transformation";
         return QJsonDocument();
+    }
 
     QJsonArray outRing;
     for (int i = 0; i < ring.size(); ++i) {
@@ -193,19 +253,21 @@ QJsonDocument GDALHandler::reprojectGeoJSONPolygon(const QJsonDocument &srcDoc) 
             continue;
         }
 
-        double x = c.at(0).toDouble(); // easting (m)
-        double y = c.at(1).toDouble(); // northing (m)
+        double x = c.at(0).toDouble(); // easting (m) or lon
+        double y = c.at(1).toDouble(); // northing (m) or lat
         double z = 0.0;
 
         if (!ct->Transform(1, &x, &y, &z)) {
+            qWarning() << "Transform failed for point" << i;
             outRing.append(c); // fallback: keep original
             continue;
         }
 
-        // x = lon, y = lat in degrees (WGS84)
+        // GDAL Transform with EPSG:4326 may return (lat, lon) in traditional axis order
+        // GeoJSON requires [lon, lat], so I swap them here
         QJsonArray outC;
-        outC.append(x); // lon
-        outC.append(y); // lat
+        outC.append(y); // lon (was in y after transform)
+        outC.append(x); // lat (was in x after transform)
         outRing.append(outC);
     }
     OCTDestroyCoordinateTransformation(ct);
@@ -275,7 +337,7 @@ QPointF GDALHandler::geoToPixel(const QPointF &geo) const
     std::memcpy(gt, geoTransform, sizeof(gt));
     
     if (!GDALInvGeoTransform(gt, invGT)) {
-        return QPointF(); // invalid
+        return QPointF();
     }
 
     double Xgeo = geo.x();
@@ -283,9 +345,9 @@ QPointF GDALHandler::geoToPixel(const QPointF &geo) const
     double px = invGT[0] + Xgeo * invGT[1] + Ygeo * invGT[2];
     double py = invGT[3] + Xgeo * invGT[4] + Ygeo * invGT[5];
 
-    // Optional: shift to pixel centers if you draw at centers
-    // px -= 0.5;
-    // py -= 0.5;
+    // shift to pixel centers to draw at centers
+    px -= 0.5;
+    py -= 0.5;
 
     return QPointF(px, py);
 }

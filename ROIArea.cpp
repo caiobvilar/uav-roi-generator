@@ -3,6 +3,7 @@
 
 #include "ROIArea.h"
 
+#include <QDateTime>
 #include <QMouseEvent>
 #include <QPainter>
 
@@ -548,33 +549,46 @@ QByteArray ROIArea::exportPolygonGeoJSON() const
     if (geoPolygon.first() != geoPolygon.last())
         geoPolygon << geoPolygon.first();
 
+    // Create GeoJSON in the source CRS first
     QJsonArray ring;
     for (int i = 0; i < geoPolygon.size(); ++i) {
         const QPointF &p = geoPolygon.at(i);
         QJsonArray coord;
-        coord.append(p.x()); // X (easting / lon)
-        coord.append(p.y()); // Y (northing / lat)
+        coord.append(p.x()); // X (easting)
+        coord.append(p.y()); // Y (northing)
         ring.append(coord);
     }
 
     QJsonArray coordinates;
-    coordinates.append(ring); // single ring
+    coordinates.append(ring);
 
     QJsonObject geom;
     geom["type"] = "Polygon";
     geom["coordinates"] = coordinates;
 
+    QJsonObject properties;
+    properties["timestamp"] = QDateTime::currentDateTimeUtc().toString(Qt::ISODate);
+    
     QJsonObject feature;
     feature["type"] = "Feature";
     feature["geometry"] = geom;
-    feature["properties"] = QJsonObject(); // or add attributes
+    feature["properties"] = properties;
 
     QJsonObject fc;
     fc["type"] = "FeatureCollection";
     fc["features"] = QJsonArray{feature};
 
-    QJsonDocument doc(fc);
-    return doc.toJson(QJsonDocument::Indented);
+    QJsonDocument srcDoc(fc);
+
+    // Now reproject to WGS84 using GDALHandler
+    QJsonDocument wgs84Doc = gdalHandler.reprojectGeoJSONPolygon(srcDoc);
+    
+    if (wgs84Doc.isNull()) {
+        qWarning() << "Failed to reproject to WGS84, returning source coordinates";
+        return srcDoc.toJson(QJsonDocument::Indented);
+    }
+
+    return wgs84Doc.toJson(QJsonDocument::Indented);
 }
 void ROIArea::saveGEOJson(QByteArray &document)
 {
