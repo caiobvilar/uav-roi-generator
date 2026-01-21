@@ -1,4 +1,5 @@
 #include "mainwindow.h"
+#include "ui_mainwindow.h"
 #include <QApplication>
 #include <QCloseEvent>
 #include <QColorDialog>
@@ -7,7 +8,6 @@
 #include <QInputDialog>
 #include <QMenuBar>
 #include <QMessageBox>
-#include "ui_mainwindow.h"
 
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)

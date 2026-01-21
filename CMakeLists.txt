@@ -4,6 +4,7 @@ project(ROIGenerator LANGUAGES CXX)
 find_package(Qt6 6.5 REQUIRED COMPONENTS Core Gui Widgets)
 find_package(Qt6 REQUIRED COMPONENTS Widgets)
 find_package(Qt6 REQUIRED COMPONENTS Core)
+find_package(Qt6 REQUIRED COMPONENTS Core)
 find_package(GDAL REQUIRED)
 qt_standard_project_setup()
 
@@ -20,6 +21,7 @@ qt_add_executable(ROIGenerator
     grahamscan.h grahamscan.cpp
     GDALHandler.h GDALHandler.cpp
     mainwindow.h mainwindow.cpp mainwindow.ui
+    pathplanner.h pathplanner.cpp
 )
 target_include_directories(ROIGenerator
     PRIVATE
@@ -34,6 +36,7 @@ target_link_libraries(ROIGenerator
 target_link_libraries(ROIGenerator PRIVATE Qt6::Widgets)
 target_link_libraries(ROIGenerator PRIVATE Qt6::Core)
 target_link_libraries(ROIGenerator PRIVATE GDAL::GDAL)
+target_link_libraries(ROIGenerator PRIVATE Qt6::Core)
 
 include(GNUInstallDirs)
 
