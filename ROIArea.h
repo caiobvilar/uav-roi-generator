@@ -17,18 +17,9 @@
 #include <QWidget>
 #include "GDALHandler.h"
 #include "grahamscan.h"
+#include <pathplanner.h>
+#include <utils.h>
 
-struct RotatedRect
-{
-    QRectF rect;
-    qreal angle;
-    QPointF origin; // corner at (minX, minY) in image coords
-    QPointF ux;     // unit vector along width (x‑axis of rect)
-    QPointF uy;     // unit vector along height (y‑axis of rect)
-    qreal width;
-    qreal height;
-    // orientation of the box in radians
-};
 class ROIArea : public QWidget
 {
     Q_OBJECT
@@ -56,6 +47,11 @@ public:
     void drawMinimumAreaRectangle(QPainter &painter, QPen &pen);
     void setPolygonMinAreaRect(RotatedRect rect) { ROIPolygonMinAreaRect = rect; }
     void calculateMinimumAreaRectangle();
+    void openDroneFile(const QString &filename);
+    QList<drone> calculateDroneCapabilities();
+    void decomposeROI();
+    void showDecomposedROI();
+    PathPlanner& getPathPlanner(){return pathPlanner;}
 public slots:
     void clearImage();
 signals:
@@ -73,6 +69,7 @@ protected:
 private:
     GrahamScan grahamScanner;
     GDALHandler gdalHandler;
+    PathPlanner pathPlanner;
     QPointF toImageCoords(const QPointF &pWidget) const;
     void drawLineTo(const QPointF &endPoint);
     void drawPointTo(const QPointF &endPoint);

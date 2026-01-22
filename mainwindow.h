@@ -22,11 +22,17 @@ private slots:
     void onAddLayerTriggered();
     void onRemoveOverlayTriggered();
 
-    void onStatusMessageChanged(const QString &text);
     void onSaveDrawnAreaTriggeredUTM24S();
     void onSaveDrawnAreaTriggeredWGS84();
     void onOpenGeoJSONAndDrawOnOverlayTriggered();
     void onCalculateMinAreaRectTriggered();
+    void onOpenDroneInfo();
+    void onCalculateDroneCapabilities();
+    void onDecomposeROI();
+    void onShowDecomposedROI();
+    
+    // Auto-connected slot for ROIArea::StatusMessageChanged
+    void on_roiArea_StatusMessageChanged(const QString &text);
 
 private:
     Ui::MainWindow *ui;

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR BSD-3-Clause
 
 #include "ROIArea.h"
+#include "pathplanner.h"
 
 #include <QDateTime>
 #include <QMouseEvent>
@@ -9,19 +10,25 @@
 
 ROIArea::ROIArea(QWidget *parent)
     : QWidget(parent)
+    , grahamScanner(this)
+    , pathPlanner(this)
 {
     this->setMinimumHeight(650);
     this->setMinimumWidth(1000);
+    
+    // Pre-allocate space to avoid reallocation
+    overlayList.reserve(10);
+    
     // 1. Create and store an initial empty base image
     QImage baseImage(size(), QImage::Format_ARGB32_Premultiplied);
-    baseImage.fill(Qt::transparent); // or Qt::transparent
+    baseImage.fill(Qt::transparent);
 
-    overlayList.append(baseImage);     // owned storage
-    QImage *ptr = &overlayList.last(); // pointer handle
+    overlayList.append(baseImage);
+    QImage *ptr = &overlayList.last();
     overlayListHandles.append(ptr);
 
     // 2. Set current image pointer
-    setCurrentImage(ptr); // currentImagePtr = ptr;
+    setCurrentImage(ptr);
 
     // 3. Widget setup
     setAttribute(Qt::WA_StaticContents);
@@ -821,5 +828,114 @@ QPolygonF ROIArea::rotatedRectToPolygon(const RotatedRect &r)
     QPointF c3 = o + h * uy;
 
     poly << c0 << c1 << c2 << c3;
+    return poly;
+}
+
+void ROIArea::openDroneFile(const QString &filename)
+{
+    QList<drone> listOfDrones = pathPlanner.getDroneInfo(filename);
+    pathPlanner.setDroneList(listOfDrones);
+}
+
+QList<drone> ROIArea::calculateDroneCapabilities()
+{
+    QList<drone> drones = pathPlanner.getDroneList();
+    
+    if (drones.isEmpty()) {
+        qWarning() << "No drones loaded. Please load drone info first.";
+        return drones;
+    }
+    
+    pathPlanner.calcFlightAltitude(drones);
+    pathPlanner.calcDroneCameraFootprint(drones);
+    pathPlanner.calcMaximumForwardVelocity(drones);
+    pathPlanner.calcDroneRelativeCapability(drones);
+    
+    pathPlanner.setDroneList(drones);
+    return drones;
+}
+
+void ROIArea::decomposeROI()
+{
+    // Use the current finalPolygon as the ROI
+    if (finalPolygon.size() < 3) {
+        qWarning() << "No valid ROI polygon to decompose.";
+        return;
+    }
+
+    QList<drone> drones = pathPlanner.getDroneList();
+    if (drones.isEmpty()) {
+        qWarning() << "No drones loaded for decomposition.";
+        return;
+    }
+
+    // Make a copy of the polygon and drone list for the decomposition
+    QPolygonF roi = finalPolygon;
+    QList<QPolygonF> decomposed = pathPlanner.decomposedROI(roi, drones, ROIPolygonMinAreaRect);
+
+    // You can now use 'decomposed' as needed, e.g., store, draw, or emit a signal
+    qDebug() << "Decomposed ROI into" << decomposed.size() << "sub-polygons.";
+}
+
+void ROIArea::showDecomposedROI()
+{
+    // Use the current finalPolygon as the ROI
+    if (finalPolygon.size() < 3) {
+        qWarning() << "No valid ROI polygon to show decomposition.";
+        return;
+    }
+
+    QList<drone> drones = pathPlanner.getDroneList();
+    if (drones.isEmpty()) {
+        qWarning() << "No drones loaded for decomposition.";
+        return;
+    }
+
+    // Decompose ROI
+    QPolygonF roi = finalPolygon;
+
+    QList<QPolygonF> decomposed = pathPlanner.decomposedROI(roi, drones, ROIPolygonMinAreaRect);
+    // Clear all overlays and handles except the base image
+    overlayList.erase(overlayList.begin() + 1, overlayList.end());
+    overlayListHandles.erase(overlayListHandles.begin() + 1, overlayListHandles.end());
+    setCurrentImage(overlayListHandles.first());
+    canDrawOnImage = false;
+
+    // Draw each decomposed polygon on the base image
+    QImage *baseImg = overlayListHandles.first();
+    QPainter painter(baseImg);
+    painter.setRenderHint(QPainter::Antialiasing, true);
+
+    QVector<QColor> colors = {Qt::red, Qt::green, Qt::blue, Qt::yellow, Qt::magenta, Qt::cyan, Qt::gray, Qt::darkRed, Qt::darkGreen, Qt::darkBlue};
+    int colorIdx = 0;
+
+    for (const QPolygonF &poly : decomposed) {
+        QPen pen(colors[colorIdx % colors.size()]);
+        pen.setWidth(3);
+        painter.setPen(pen);
+        painter.setBrush(Qt::NoBrush);
+        painter.drawPolygon(poly);
+        colorIdx++;
+    }
+
+    painter.end();
+
+    update();
+    emit StatusMessageChanged(tr("Decomposed ROI polygons drawn on base image."));
+}
+
+// Helper: Create a rectangle polygon in MAR coordinates
+static QPolygonF makeRectPoly(const RotatedRect &mar, double start, double end) {
+    QPointF o = mar.origin + start * mar.ux;
+    QPointF ux = mar.ux;
+    QPointF uy = mar.uy;
+    double w = end - start;
+    double h = mar.height;
+    QPolygonF poly;
+    poly << o
+         << o + w * ux
+         << o + w * ux + h * uy
+         << o + h * uy
+         << o; // closed
     return poly;
 }

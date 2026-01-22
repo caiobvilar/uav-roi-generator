@@ -1,14 +1,29 @@
 #include "pathplanner.h"
-#include <qlist.h>
-#include <qpolygon.h>
-#include <QFile>
-#include <QJsonArray>
-#include <QJsonDocument>
-#include <QJsonObject>
+#include "ROIArea.h"
+#include <QPolygonF>
+#include <QList>
+#include <QVector>
+#include <algorithm>
 
 #define DESIRED_GSD 2.0 // This asumes a desired ground sample distance of 2.0cm/pixel for precision agriculture
 #define FORWARD_OVERLAP 0.8 // This assumes precision agriculture
 #define SIDE_OVERLAP 0.75 //This also assumes precision agriculture
+
+// Helper: Create a rectangle polygon in MAR coordinates
+static QPolygonF makeRectPoly(const RotatedRect &mar, double start, double end) {
+    QPointF o = mar.origin + start * mar.ux;
+    QPointF ux = mar.ux;
+    QPointF uy = mar.uy;
+    double w = end - start;
+    double h = mar.height;
+    QPolygonF poly;
+    poly << o
+         << o + w * ux
+         << o + w * ux + h * uy
+         << o + h * uy
+         << o; // closed
+    return poly;
+}
 
 PathPlanner::PathPlanner(QObject *parent)
     : QObject{parent}
@@ -67,7 +82,7 @@ QList<drone> PathPlanner::getDroneInfo(const QString &filename)
     
     return results;
 }
-void PathPlanner::calcFlightAltitude(QList<drone> droneList)
+void PathPlanner::calcFlightAltitude(QList<drone> &droneList)
 {
     for (auto &d : droneList) {
         // GSD_x * f_l * i_x / l_x
@@ -83,7 +98,7 @@ void PathPlanner::calcFlightAltitude(QList<drone> droneList)
     }
 }
 
-void PathPlanner::calcDroneCameraFootprint(QList<drone> droneList)
+void PathPlanner::calcDroneCameraFootprint(QList<drone> &droneList)
 {
     for (auto &d : droneList) {
         // L_x = h * l_x / f_l
@@ -97,7 +112,7 @@ void PathPlanner::calcDroneCameraFootprint(QList<drone> droneList)
         qDebug() << "  L_y:" << d.max_y_footprint << "cm";
     }
 }
-void PathPlanner::calcMaximumForwardVelocity(QList<drone> droneList)
+void PathPlanner::calcMaximumForwardVelocity(QList<drone> &droneList)
 {
     for (auto &d : droneList) {
         // V_max = L_y * (1 - O_f) / s_h
@@ -108,7 +123,7 @@ void PathPlanner::calcMaximumForwardVelocity(QList<drone> droneList)
     }
 }
 
-void PathPlanner::calcDroneRelativeCapability(QList<drone> droneList)
+void PathPlanner::calcDroneRelativeCapability(QList<drone> &droneList)
 {
     // Calculate capability for each drone: c_i = V_max^i * L_x^i
     double totalCapability = 0.0;
@@ -146,124 +161,32 @@ double PathPlanner::calculatePolygonArea(const QPolygonF &polygon)
     return qAbs(area) / 2.0;
 }
 
-QList<QPolygonF> PathPlanner::decomposedROI(QPolygonF &roi, QList<drone> &droneList)
+QList<QPolygonF> PathPlanner::decomposedROI(QPolygonF &roi, QList<drone> &droneList, const RotatedRect &mar)
 {
-    QList<QPolygonF> decomposedPolygons;
-    
-    if (droneList.isEmpty()) {
-        qWarning() << "No drones provided for ROI decomposition";
-        return decomposedPolygons;
+    QList<QPolygonF> result;
+    if (roi.size() < 3 || droneList.isEmpty() || mar.width <= 0.0 || mar.height <= 0.0)
+        return result;
+
+    // 1. Normalize relative capabilities
+    double totalCap = 0.0;
+    for (const drone &d : droneList) totalCap += d.relative_capability_score;
+    if (totalCap <= 0.0) return result;
+
+    QVector<double> caps;
+    for (const drone &d : droneList) caps.append(d.relative_capability_score / totalCap);
+
+    // 2. Partition MAR along its long side (width)
+    double start = 0.0;
+    for (int i = 0; i < caps.size(); ++i) {
+        double end = start + caps[i] * mar.width;
+        QPolygonF rectPoly = makeRectPoly(mar, start, end);
+
+        // 3. Clip rectangle to ROI (intersection)
+        QPolygonF clipped = rectPoly.intersected(roi);
+        if (clipped.size() >= 3)
+            result.append(clipped);
+
+        start = end;
     }
-    
-    // Calculate total ROI area using Shoelace formula
-    double totalROIArea = calculatePolygonArea(roi);
-    
-    if (totalROIArea <= 0.0) {
-        qWarning() << "Invalid ROI polygon area";
-        return decomposedPolygons;
-    }
-    
-    int numDrones = droneList.size();
-    decomposedPolygons.resize(numDrones);
-    
-    // Binary search decomposition: split ROI based on relative capabilities
-    // For each drone, assign a sub-polygon with area = relative_capability * total_area
-    
-    QPolygonF remainingROI = roi;
-    
-    for (int i = 0; i < numDrones - 1; ++i) {
-        double targetArea = droneList[i].relative_capability_score * totalROIArea;
-        
-        // Binary search for the cut line that divides the polygon
-        // Use a simple approach: cut along a horizontal or vertical line
-        QRectF boundingBox = remainingROI.boundingRect();
-        
-        double minY = boundingBox.top();
-        double maxY = boundingBox.bottom();
-        double currentArea = 0.0;
-        double cutY = minY;
-        
-        // Binary search to find the Y coordinate that gives us the target area
-        double low = minY;
-        double high = maxY;
-        const double tolerance = 0.01; // 0.01 unit tolerance
-        
-        while ((high - low) > tolerance) {
-            double mid = (low + high) / 2.0;
-            
-            // Create a line at y = mid and calculate the area below it
-            QPolygonF bottomPart;
-            
-            for (int j = 0; j < remainingROI.size(); ++j) {
-                QPointF p = remainingROI[j];
-                if (p.y() <= mid) {
-                    bottomPart.append(p);
-                }
-            }
-            
-            // Add intersection points at the cut line
-            for (int j = 0; j < remainingROI.size(); ++j) {
-                QPointF p1 = remainingROI[j];
-                QPointF p2 = remainingROI[(j + 1) % remainingROI.size()];
-                
-                // Check if edge crosses the cut line
-                if ((p1.y() <= mid && p2.y() > mid) || (p1.y() > mid && p2.y() <= mid)) {
-                    double t = (mid - p1.y()) / (p2.y() - p1.y());
-                    QPointF intersection(p1.x() + t * (p2.x() - p1.x()), mid);
-                    bottomPart.append(intersection);
-                }
-            }
-            
-            currentArea = calculatePolygonArea(bottomPart);
-            
-            if (currentArea < targetArea) {
-                low = mid;
-            } else {
-                high = mid;
-            }
-            cutY = mid;
-        }
-        
-        // Create the sub-polygon for this drone by cutting at cutY
-        QPolygonF dronePart;
-        QPolygonF nextRemaining;
-        
-        for (int j = 0; j < remainingROI.size(); ++j) {
-            QPointF p = remainingROI[j];
-            if (p.y() <= cutY) {
-                dronePart.append(p);
-            } else {
-                nextRemaining.append(p);
-            }
-        }
-        
-        // Add intersection points at the cut line
-        for (int j = 0; j < remainingROI.size(); ++j) {
-            QPointF p1 = remainingROI[j];
-            QPointF p2 = remainingROI[(j + 1) % remainingROI.size()];
-            
-            // Check if edge crosses the cut line
-            if ((p1.y() <= cutY && p2.y() > cutY) || (p1.y() > cutY && p2.y() <= cutY)) {
-                double t = (cutY - p1.y()) / (p2.y() - p1.y());
-                QPointF intersection(p1.x() + t * (p2.x() - p1.x()), cutY);
-                dronePart.append(intersection);
-                nextRemaining.append(intersection);
-            }
-        }
-        
-        decomposedPolygons[i] = dronePart;
-        remainingROI = nextRemaining;
-        
-        qDebug() << "Drone" << droneList[i].name << "- Assigned sub-polygon area:"
-                 << calculatePolygonArea(dronePart);
-    }
-    
-    // Assign remaining polygon to the last drone
-    decomposedPolygons[numDrones - 1] = remainingROI;
-    qDebug() << "Drone" << droneList[numDrones - 1].name << "- Assigned sub-polygon area:"
-             << calculatePolygonArea(remainingROI);
-    
-    qDebug() << "ROI decomposed into" << numDrones << "non-overlapping sub-polygons";
-    
-    return decomposedPolygons;
+    return result;
 }

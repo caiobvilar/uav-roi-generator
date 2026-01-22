@@ -6,52 +6,78 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>1019</width>
-    <height>955</height>
+    <width>1366</width>
+    <height>932</height>
    </rect>
+  </property>
+  <property name="minimumSize">
+   <size>
+    <width>1300</width>
+    <height>932</height>
+   </size>
   </property>
   <property name="windowTitle">
    <string>MainWindow</string>
   </property>
   <widget class="QWidget" name="centralwidget">
-   <layout class="QVBoxLayout" name="verticalLayout">
-    <item>
-     <widget class="ROIArea" name="roiArea" native="true">
-      <property name="minimumSize">
-       <size>
-        <width>999</width>
-        <height>800</height>
-       </size>
-      </property>
-      <property name="focusPolicy">
-       <enum>Qt::FocusPolicy::ClickFocus</enum>
-      </property>
-      <property name="layoutDirection">
-       <enum>Qt::LayoutDirection::LeftToRight</enum>
-      </property>
-      <property name="autoFillBackground">
-       <bool>true</bool>
-      </property>
-     </widget>
-    </item>
-    <item>
-     <widget class="QListWidget" name="listWidget"/>
-    </item>
-    <item>
-     <widget class="QLabel" name="label">
-      <property name="text">
-       <string>...</string>
-      </property>
-     </widget>
-    </item>
-   </layout>
+   <widget class="ROIArea" name="roiArea" native="true">
+    <property name="geometry">
+     <rect>
+      <x>10</x>
+      <y>10</y>
+      <width>999</width>
+      <height>800</height>
+     </rect>
+    </property>
+    <property name="minimumSize">
+     <size>
+      <width>999</width>
+      <height>800</height>
+     </size>
+    </property>
+    <property name="focusPolicy">
+     <enum>Qt::FocusPolicy::ClickFocus</enum>
+    </property>
+    <property name="layoutDirection">
+     <enum>Qt::LayoutDirection::LeftToRight</enum>
+    </property>
+    <property name="autoFillBackground">
+     <bool>true</bool>
+    </property>
+   </widget>
+   <widget class="QListWidget" name="listWidget">
+    <property name="geometry">
+     <rect>
+      <x>10</x>
+      <y>820</y>
+      <width>1001</width>
+      <height>70</height>
+     </rect>
+    </property>
+   </widget>
+   <widget class="QTreeView" name="treeView">
+    <property name="geometry">
+     <rect>
+      <x>1020</x>
+      <y>10</y>
+      <width>339</width>
+      <height>880</height>
+     </rect>
+    </property>
+    <property name="minimumSize">
+     <size>
+      <width>300</width>
+      <height>880</height>
+     </size>
+    </property>
+   </widget>
   </widget>
   <widget class="QMenuBar" name="menubar">
    <property name="geometry">
     <rect>
      <x>0</x>
      <y>0</y>
-     <width>1019</width>
+     <width>1366</width>
      <height>19</height>
     </rect>
    </property>
@@ -87,8 +113,18 @@
     <addaction name="menuSave_Drawn_Area"/>
     <addaction name="actionCalculate_Minimum_Area_Rectangle"/>
    </widget>
+   <widget class="QMenu" name="menuCalcs">
+    <property name="title">
+     <string>Calcs</string>
+    </property>
+    <addaction name="actionOpen_Drone_Info"/>
+    <addaction name="actionCalculate_Drone_Cap"/>
+    <addaction name="actionDecompose_ROI"/>
+    <addaction name="actionShow_Decomposed_ROI"/>
+   </widget>
    <addaction name="menuFile"/>
    <addaction name="menuOptions"/>
+   <addaction name="menuCalcs"/>
   </widget>
   <widget class="QStatusBar" name="statusbar"/>
   <action name="actionAbout">
@@ -139,6 +175,26 @@
   <action name="actionRemove_Layer">
    <property name="text">
     <string>Remove Layer</string>
+   </property>
+  </action>
+  <action name="actionOpen_Drone_Info">
+   <property name="text">
+    <string>Open Drone Info</string>
+   </property>
+  </action>
+  <action name="actionCalculate_Drone_Cap">
+   <property name="text">
+    <string>Calculate Drone Cap.</string>
+   </property>
+  </action>
+  <action name="actionDecompose_ROI">
+   <property name="text">
+    <string>Decompose ROI</string>
+   </property>
+  </action>
+  <action name="actionShow_Decomposed_ROI">
+   <property name="text">
+    <string>Show Decomposed ROI</string>
    </property>
   </action>
  </widget>
