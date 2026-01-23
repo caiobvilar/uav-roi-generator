@@ -183,33 +183,71 @@ PathPlanner::decomposedROI(QPolygonF& roi, QList<drone>& droneList, const Rotate
     if (roi.size() < 3 || droneList.isEmpty() || mar.width <= 0.0 || mar.height <= 0.0)
         return result;
 
-    // 1. Normalize relative capabilities (unchanged)
+    double totalArea = calculatePolygonArea(roi);
+    QVector<double> targetAreas;
     double totalCap = 0.0;
     for (const drone& d : droneList)
         totalCap += d.relative_capability_score;
     if (totalCap <= 0.0)
         return result;
-
-    QVector<double> caps;
     for (const drone& d : droneList)
-        caps.append(d.relative_capability_score / totalCap);
+        targetAreas.append((d.relative_capability_score / totalCap) * totalArea);
 
-    // 2. Your exact partition loop (unchanged)
-    double start = 0.0;
-    double totalRoiArea = calculatePolygonArea(roi);
-    double minArea = 0.001 * totalRoiArea; // Only addition: threshold
+    double prev_cut = 0.0;
+    QPolygonF remaining = roi;
+    QList<QPolygonF> assignedSlices;
 
-    for (int i = 0; i < caps.size(); ++i)
+    for (int i = 0; i < droneList.size(); ++i)
     {
-        double end = start + caps[i] * mar.width;
-        QPolygonF rectPoly = makeRectPoly(mar, start, end);
-        QPolygonF clipped = rectPoly.intersected(roi);
-
-        if (clipped.size() >= 3 && calculatePolygonArea(clipped) >= minArea)
+        if (i == droneList.size() - 1)
         {
-            result.append(qMakePair(clipped, QString::number(droneList[i].id)));
+            // Last drone gets the rest
+            // If remaining is invalid, reconstruct it from the original ROI minus all previous slices
+            if (remaining.size() < 3)
+            {
+                QPolygonF unionSlices;
+                for (const QPolygonF& s : assignedSlices)
+                    unionSlices = unionSlices.united(s);
+                remaining = roi.subtracted(unionSlices);
+            }
+            result.append(qMakePair(remaining, QString::number(droneList[i].id)));
+            break;
         }
-        start = end;
+
+        // Binary search for the cut position along MAR width to match the target area
+        double low = prev_cut, high = mar.width;
+        QPolygonF bestSlice;
+        double bestDiff = std::numeric_limits<double>::max();
+
+        for (int iter = 0; iter < 40; ++iter)
+        {
+            double mid = (low + high) / 2.0;
+            QPolygonF rectPoly = makeRectPoly(mar, prev_cut, mid);
+            QPolygonF slice = rectPoly.intersected(remaining);
+            double area = calculatePolygonArea(slice);
+            double diff = std::abs(area - targetAreas[i]);
+            if (diff < bestDiff)
+            {
+                bestDiff = diff;
+                bestSlice = slice;
+            }
+            if (area < targetAreas[i])
+                low = mid;
+            else
+                high = mid;
+        }
+
+        // Use the best found slice
+        if (bestSlice.size() < 3)
+            bestSlice = remaining;
+
+        result.append(qMakePair(bestSlice, QString::number(droneList[i].id)));
+        assignedSlices.append(bestSlice);
+
+        // Remove this slice from remaining for next iteration
+        prev_cut = high;
+        QPolygonF nextRect = makeRectPoly(mar, prev_cut, mar.width);
+        remaining = nextRect.intersected(roi);
     }
 
     return result;

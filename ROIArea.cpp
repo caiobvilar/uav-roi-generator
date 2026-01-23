@@ -1033,62 +1033,45 @@ ROIArea::showDecomposedROI()
 QList<QPointF>
 ROIArea::generateSweepWaypoints(const QPolygonF& subROI, const drone& d, const RotatedRect& mar) const
 {
-    // Parameters
     QList<QPointF> waypoints;
     if (subROI.size() < 3)
         return waypoints;
 
-    // Sweep direction: along mar.uy (shorter side)
-    const QPointF& origin = mar.origin;
-    const QPointF& ux = mar.ux; // long side direction
-    const QPointF& uy = mar.uy; // short side direction
-    double width = mar.width;
-    double height = mar.height;
+    // 1. Find the two sides of the bounding box that are parallel to the sweep direction
+    // We'll use the MAR (minimum area rectangle) for this
+    QPointF A1 = mar.origin;
+    QPointF B1 = mar.origin + mar.height * mar.uy;
+    QPointF A2 = mar.origin + mar.width * mar.ux;
+    QPointF B2 = mar.origin + mar.width * mar.ux + mar.height * mar.uy;
 
-    // Choose sweep axis: sweep along uy, lines parallel to ux
+    // For sweeping along the width (mar.ux), sides are (A1,B1) and (A2,B2)
+    double L = QLineF(A1, B1).length(); // Length of side for waypoints
     double step = d.max_y_footprint * (1.0 - SIDE_OVERLAP);
-    if (step <= 0.0)
-        step = 1.0; // fallback
-    int nSteps = std::max(1, int(std::ceil(height / step)));
+    if (step <= 0)
+        step = L / 10; // fallback
 
-    // For each sweep line, compute intersection with subROI
-    bool zigzag = false;
-    for (int i = 0; i < nSteps; ++i)
+    int nWaypoints = std::max(2, int(std::ceil(L / step)) + 1);
+
+    for (int l = 0; l < nWaypoints; ++l)
     {
-        double offset = i * step;
-        QPointF sweepStart = origin + offset * uy;
-        QPointF sweepEnd = sweepStart + width * ux;
+        double theta = (nWaypoints == 1) ? 0.5 : double(l) / (nWaypoints - 1);
+        // Equation (19): w_{1,l} = A1*(1-theta) + B1*theta
+        QPointF w1 = A1 * (1.0 - theta) + B1 * theta;
+        QPointF w2 = A2 * (1.0 - theta) + B2 * theta;
 
-        // Build the sweep line
-        QLineF sweepLine(sweepStart, sweepEnd);
+        // Interpolate between w1 and w2 to get sweep points
+        double sweepLen = QLineF(w1, w2).length();
+        double dotSpacing = d.max_y_footprint * (1.0 - FORWARD_OVERLAP);
+        if (dotSpacing <= 0)
+            dotSpacing = sweepLen / 10; // fallback
 
-        // Find intersection points with subROI edges
-        QList<QPointF> intersections;
-        for (int j = 0; j < subROI.size(); ++j)
+        int nDots = std::max(2, int(std::ceil(sweepLen / dotSpacing)) + 1);
+        for (int k = 0; k < nDots; ++k)
         {
-            QPointF p1 = subROI[j];
-            QPointF p2 = subROI[(j + 1) % subROI.size()];
-            QLineF edge(p1, p2);
-            QPointF intersectPt;
-            QLineF::IntersectionType type = sweepLine.intersects(edge, &intersectPt);
-            if (type == QLineF::BoundedIntersection)
-            {
-                intersections.append(intersectPt);
-            }
-        }
-        // Only even number of intersections expected for convex polygon
-        if (intersections.size() >= 2)
-        {
-            // Sort by projection along ux
-            std::sort(intersections.begin(), intersections.end(), [&](const QPointF& a, const QPointF& b) {
-                return QPointF::dotProduct(a - sweepStart, ux) < QPointF::dotProduct(b - sweepStart, ux);
-            });
-            // Add waypoints for this sweep (start to end or end to start for zigzag)
-            if (!zigzag)
-                waypoints << intersections[0] << intersections[1];
-            else
-                waypoints << intersections[1] << intersections[0];
-            zigzag = !zigzag;
+            double t = (nDots == 1) ? 0.5 : double(k) / (nDots - 1);
+            QPointF pt = w1 * (1.0 - t) + w2 * t;
+            if (subROI.containsPoint(pt, Qt::OddEvenFill))
+                waypoints.append(pt);
         }
     }
     return waypoints;
@@ -1097,11 +1080,11 @@ ROIArea::generateSweepWaypoints(const QPolygonF& subROI, const drone& d, const R
 void
 ROIArea::showWaypoints()
 {
-    QList<QPair<QPolygonF, QString>> decomposedPairs = pathPlanner.getDecomposedROIs(); // N pairs
+    auto decomposedPairs = pathPlanner.getDecomposedROIs();
     if (decomposedPairs.isEmpty())
         return;
 
-    QList<drone> drones = pathPlanner.getDroneList();
+    auto drones = pathPlanner.getDroneList();
     addOverlay(getOverlayStackTop().first, "Waypoints Overlay");
 
     QPainter painter(&getOverlayStackTop().first);
@@ -1109,34 +1092,30 @@ ROIArea::showWaypoints()
         return;
     painter.setRenderHint(QPainter::Antialiasing, true);
 
-    // FIXED: Match drone i to subROI i (not crossed!)
+    QVector<QColor> colors = {Qt::red, Qt::green, Qt::blue, Qt::magenta};
     for (int i = 0; i < std::min(decomposedPairs.size(), drones.size()); ++i)
     {
-        const QPolygonF& subROI = decomposedPairs[i].first;
-        const drone& d = drones[i];
+        const auto& subROI = decomposedPairs[i].first;
+        const auto& d = drones[i];
+        auto waypoints = generateSweepWaypoints(subROI, d, ROIPolygonMinAreaRect);
 
-        QList<QPointF> waypoints = generateSweepWaypoints(subROI, d, ROIPolygonMinAreaRect);
+        qDebug() << "Drone" << d.id << ":" << waypoints.size() << "wps";
+
         if (waypoints.size() < 2)
-            continue; // Skip empties
+            continue;
 
-        // Draw trajectory LINE + points
-        QPen linePen(QColor(255, 0, 0, 180)); // Red semi-transparent line
-        linePen.setWidthF(2.0 / zoomFactor);
+        QColor col = colors[i % colors.size()];
+        QPen linePen(QColor(col.red(), col.green(), col.blue(), 180));
+        linePen.setWidthF(4.0); // Bold image px
         painter.setPen(linePen);
-        painter.drawPolyline(waypoints.data(), waypoints.size()); // CONNECT waypoints!
+        painter.drawPolyline(waypoints.data(), waypoints.size());
 
-        // Dots per waypoint
-        QPen dotPen(Qt::blue);
-        dotPen.setWidthF(1.0 / zoomFactor);
+        QPen dotPen(col);
+        dotPen.setWidthF(2.0);
         painter.setPen(dotPen);
         for (const QPointF& wp : waypoints)
-        {
-            painter.drawEllipse(wp, 4.0 / zoomFactor, 4.0 / zoomFactor);
-        }
-
-        qDebug() << "Drone" << d.id << "got" << waypoints.size() << "wps on subROI" << i;
+            painter.drawEllipse(wp, 6.0, 6.0);
     }
-
     painter.end();
     update();
 }

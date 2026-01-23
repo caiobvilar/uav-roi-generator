@@ -127,6 +127,7 @@ MainWindow::onOpenDroneInfo()
 
     if (!fileName.isEmpty())
         ui->roiArea->openDroneFile(fileName);
+    onCalculateDroneCapabilities();
 }
 
 void
