@@ -28,7 +28,7 @@ class PathPlanner : public QObject
     calcMaximumForwardVelocity(QList<drone>& droneList);
     void
     calcDroneRelativeCapability(QList<drone>& droneList);
-    QList<QPolygonF>
+    QList<QPair<QPolygonF, QString>>
     decomposedROI(QPolygonF& roi, QList<drone>& droneList, const RotatedRect& mar);
     double
     calculatePolygonArea(const QPolygonF& polygon);
@@ -45,10 +45,15 @@ class PathPlanner : public QObject
         return this->droneList;
     }
 
+    void
+    setDecomposedROIs(const QList<QPair<QPolygonF, QString>>& decompROIs);
+    QList<QPair<QPolygonF, QString>>
+    getDecomposedROIs() const;
+
   private:
     QPolygonF RegionOfInterest;
     QList<drone> droneList;
-
+    QList<QPair<QPolygonF, QString>> decomposedPolygons;
   signals:
 };
 

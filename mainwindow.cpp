@@ -30,6 +30,7 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent), ui(new Ui::MainWi
     connect(ui->actionCalculate_Drone_Cap, &QAction::triggered, this, &MainWindow::onCalculateDroneCapabilities);
     connect(ui->actionDecompose_ROI, &QAction::triggered, this, &MainWindow::onDecomposeROI);
     connect(ui->actionShow_Decomposed_ROI, &QAction::triggered, this, &MainWindow::onShowDecomposedROI);
+    connect(ui->actionWaypoints, &QAction::triggered, this, &MainWindow::onCalculateWaypoints);
 }
 
 MainWindow::~MainWindow()
@@ -238,4 +239,10 @@ void
 MainWindow::on_roiArea_StatusMessageChanged(const QString& text)
 {
     statusBar()->showMessage(text);
+}
+
+void
+MainWindow::onCalculateWaypoints()
+{
+    ui->roiArea->showWaypoints();
 }

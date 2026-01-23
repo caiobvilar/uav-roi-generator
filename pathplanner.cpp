@@ -5,10 +5,6 @@
 #include <QVector>
 #include <algorithm>
 
-#define DESIRED_GSD 2.0     // This asumes a desired ground sample distance of 2.0cm/pixel for precision agriculture
-#define FORWARD_OVERLAP 0.8 // This assumes precision agriculture
-#define SIDE_OVERLAP 0.75   // This also assumes precision agriculture
-
 // Helper: Create a rectangle polygon in MAR coordinates
 static QPolygonF
 makeRectPoly(const RotatedRect& mar, double start, double end)
@@ -180,10 +176,10 @@ PathPlanner::calculatePolygonArea(const QPolygonF& polygon)
     return qAbs(area) / 2.0;
 }
 
-QList<QPolygonF>
+QList<QPair<QPolygonF, QString>>
 PathPlanner::decomposedROI(QPolygonF& roi, QList<drone>& droneList, const RotatedRect& mar)
 {
-    QList<QPolygonF> result;
+    QList<QPair<QPolygonF, QString>> result;
     if (roi.size() < 3 || droneList.isEmpty() || mar.width <= 0.0 || mar.height <= 0.0)
         return result;
 
@@ -208,9 +204,25 @@ PathPlanner::decomposedROI(QPolygonF& roi, QList<drone>& droneList, const Rotate
         // 3. Clip rectangle to ROI (intersection)
         QPolygonF clipped = rectPoly.intersected(roi);
         if (clipped.size() >= 3)
-            result.append(clipped);
+        {
+            // Pair with drone ID as QString
+            QString droneIdStr = QString::number(droneList[i].id);
+            result.append(qMakePair(clipped, droneIdStr));
+        }
 
         start = end;
     }
     return result;
+}
+
+void
+PathPlanner::setDecomposedROIs(const QList<QPair<QPolygonF, QString>>& decompROIs)
+{
+    this->decomposedPolygons = decompROIs;
+}
+
+QList<QPair<QPolygonF, QString>>
+PathPlanner::getDecomposedROIs() const
+{
+    return this->decomposedPolygons;
 }

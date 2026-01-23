@@ -78,7 +78,9 @@ class ROIArea : public QWidget
     void
     drawMinimumAreaRectangle();
 
-    void drawPolygonOutline(const QPolygonF& polygon);
+    void
+    drawPolygonOutline(const QPolygonF& polygon);
+
     void
     setPolygonMinAreaRect(RotatedRect rect)
     {
@@ -95,6 +97,8 @@ class ROIArea : public QWidget
     decomposeROI();
     void
     showDecomposedROI();
+    QList<QPointF>
+    generateSweepWaypoints(const QPolygonF& subROI, const drone& d, const RotatedRect& mar) const;
 
     PathPlanner&
     getPathPlanner()
@@ -102,6 +106,8 @@ class ROIArea : public QWidget
         return pathPlanner;
     }
 
+    void
+    showWaypoints();
   public slots:
     void
     clearImage();

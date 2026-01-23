@@ -78,7 +78,7 @@
      <x>0</x>
      <y>0</y>
      <width>1366</width>
-     <height>19</height>
+     <height>23</height>
     </rect>
    </property>
    <widget class="QMenu" name="menuFile">
@@ -121,6 +121,7 @@
     <addaction name="actionCalculate_Drone_Cap"/>
     <addaction name="actionDecompose_ROI"/>
     <addaction name="actionShow_Decomposed_ROI"/>
+    <addaction name="actionWaypoints"/>
    </widget>
    <addaction name="menuFile"/>
    <addaction name="menuOptions"/>
@@ -195,6 +196,11 @@
   <action name="actionShow_Decomposed_ROI">
    <property name="text">
     <string>Show Decomposed ROI</string>
+   </property>
+  </action>
+  <action name="actionWaypoints">
+   <property name="text">
+    <string>Waypoints</string>
    </property>
   </action>
  </widget>

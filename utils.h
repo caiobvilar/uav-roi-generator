@@ -6,6 +6,10 @@
 #include <QRectF>
 #include <QString>
 
+#define DESIRED_GSD 2.0     // This asumes a desired ground sample distance of 2.0cm/pixel for precision agriculture
+#define FORWARD_OVERLAP 0.8 // This assumes precision agriculture
+#define SIDE_OVERLAP 0.75   // This also assumes precision agriculture
+
 struct RotatedRect
 {
     QRectF rect;

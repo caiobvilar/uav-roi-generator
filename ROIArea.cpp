@@ -54,7 +54,7 @@ ROIArea::addOverlay(const QImage& baseImage, const QString& overlayLabel)
     QRect rect = overlay.rect().adjusted(margin, margin, -margin, -margin);
     painter.drawText(rect, Qt::AlignTop | Qt::AlignRight, text);
 
-    
+
     overlayStack.push(qMakePair(overlay, text));
     canDrawOnImage = true; // allow drawing now
     emit StatusMessageChanged(tr("Drawing enabled: layer added"));
@@ -88,11 +88,14 @@ ROIArea::removeOverlay()
 
     update();
 }
-void ROIArea::cleanToOpenImage()
+
+void
+ROIArea::cleanToOpenImage()
 {
     cleanOverlayStack();
     addOverlay(openImagePair.first, "");
 }
+
 void
 ROIArea::cleanOverlayStack()
 {
@@ -129,7 +132,7 @@ ROIArea::openImage(const QString& fileName)
     }
 
     addOverlay(loadedImage, "");
-    openImagePair = qMakePair(loadedImage,"");
+    openImagePair = qMakePair(loadedImage, "");
     canDrawOnImage = false;
     emit StatusMessageChanged(tr("Drawing disabled: add new layer"));
     update();
@@ -149,7 +152,7 @@ ROIArea::closeImage()
     grahamScanner.clear();
 
     // Create a new blank white image as background
-
+    cleanOverlayStack();
     canDrawOnImage = false;
     emit StatusMessageChanged(tr("Drawing disabled: image closed"));
     update(); // repaint
@@ -191,7 +194,6 @@ ROIArea::keyPressEvent(QKeyEvent* event)
     switch (event->key())
     {
     case Qt::Key_Escape:
-        // clearImage(); // clears image + update()
         showFinalPolygon = false;
         finalPolygon = QPolygonF();
         isPolygonDrawn = false;
@@ -210,7 +212,8 @@ ROIArea::keyPressEvent(QKeyEvent* event)
             showFinalPolygon = !finalPolygon.isEmpty() && finalPolygon.size() >= 3; // only if it’s a real polygon
             isPolygonDrawn = showFinalPolygon;
             qDebug() << "finalPolygon size =" << finalPolygon.size() << " showFinalPolygon =" << showFinalPolygon;
-            update(); // triggers paintEvent
+            drawPolygonOutline(finalPolygon); // image coords
+            update();                         // triggers paintEvent
         }
         break;
 
@@ -338,46 +341,44 @@ ROIArea::paintEvent(QPaintEvent* event)
     QPainter painter(this);
     painter.fillRect(rect(), Qt::black);
 
+    // Guarantee: Only the top overlay image is painted
+    Q_ASSERT(!overlayStack.empty());
     if (overlayStack.empty())
         return;
 
     painter.save();
-
     painter.translate(panOffset);
     painter.scale(zoomFactor, zoomFactor);
 
+    // Always paint only the top overlay image
     painter.drawImage(QPoint(0, 0), getOverlayStackTop().first);
 
-    if (showFinalPolygon && finalPolygon.size() >= 3)
-    {
-        drawPolygonOutline(finalPolygon);
-    }
     painter.restore();
 }
-void ROIArea::drawPolygonOutline(const QPolygonF& polygon)
+
+void
+ROIArea::drawPolygonOutline(const QPolygonF& polygon)
 {
-        addOverlay(getOverlayStackTop().first, "ROIArea Outline");
-        QImage &image = getOverlayStackTop().first;
-        QPainter painter(&image);
-        if (!painter.isActive())
-            return;
-        painter.setRenderHint(QPainter::Antialiasing);
+    cleanToOpenImage();
+    QImage& image = getOverlayStackTop().first;
+    QPainter painter(&image);
+    if (!painter.isActive())
+        return;
+    painter.setRenderHint(QPainter::Antialiasing);
 
-        QPen pen(Qt::red);
-        pen.setWidthF(2.0 / zoomFactor);
-        painter.setPen(pen);
-        QBrush brush(QColor(255, 0, 0, 80));
-        painter.setBrush(brush);
+    QPen pen(Qt::red);
+    pen.setWidthF(2.0 / zoomFactor);
+    painter.setPen(pen);
+    QBrush brush(QColor(255, 0, 0, 80));
+    painter.setBrush(brush);
 
-        painter.drawPolygon(finalPolygon);      // image coords
-        update();
+    painter.drawPolygon(finalPolygon); // image coords
+    update();
 }
+
 void
 ROIArea::resizeEvent(QResizeEvent* event)
 {
-    // Do NOT resize any QImage here: images keep their pixel size.
-    // The widget will just scale how it draws them (via paintEvent).
-
     QWidget::resizeEvent(event);
     update();
 }
@@ -508,8 +509,11 @@ ROIArea::minimumAreaRectangle(const QList<QPointF>& hull)
         for (int k = 0; k < n; ++k)
         {
             const QPointF& p = hull[k];
-            double px = dot(p, ux);
-            double py = dot(p, uy);
+
+            // Project point onto the orthonormal basis (ux, uy)
+            double px = dot(p, ux); // coordinate along ux
+            double py = dot(p, uy); // coordinate along uy
+
             if (px < minX)
                 minX = px;
             if (px > maxX)
@@ -851,7 +855,6 @@ ROIArea::calculateMinimumAreaRectangle()
     }
 
     ROIPolygonMinAreaRect = minimumAreaRectangle(hull); // image coords
-    update();                                           // request repaint so paintEvent draws it
 }
 
 void
@@ -860,13 +863,12 @@ ROIArea::drawMinimumAreaRectangle()
 {
     // Create a new overlay image based on the current top overlay
     addOverlay(getOverlayStackTop().first, "Min Area Rect Overlay");
-    QPair<QImage, QString>& overlay = getOverlayStackTop();;
-    QImage& overlayImage = overlay.first;
+    QImage& overlayImage = getOverlayStackTop().first;
     // Rectangle in image coordinates
     QPolygonF box = rotatedRectToPolygon(ROIPolygonMinAreaRect);
     QPainter overlayPainter(&overlayImage);
     if (!overlayPainter.isActive())
-        return; 
+        return;
 
     QPen pen;
     pen.setColor(Qt::yellow);
@@ -946,8 +948,8 @@ ROIArea::decomposeROI()
 
     // Make a copy of the polygon and drone list for the decomposition
     QPolygonF roi = finalPolygon;
-    QList<QPolygonF> decomposed = pathPlanner.decomposedROI(roi, drones, ROIPolygonMinAreaRect);
-
+    QList<QPair<QPolygonF, QString>> decomposed = pathPlanner.decomposedROI(roi, drones, ROIPolygonMinAreaRect);
+    pathPlanner.setDecomposedROIs(decomposed);
     // You can now use 'decomposed' as needed, e.g., store, draw, or emit a signal
     qDebug() << "Decomposed ROI into" << decomposed.size() << "sub-polygons.";
 }
@@ -969,7 +971,7 @@ ROIArea::showDecomposedROI()
     }
 
     QPolygonF roi = finalPolygon;
-    QList<QPolygonF> decomposed = pathPlanner.decomposedROI(roi, drones, ROIPolygonMinAreaRect);
+    QList<QPair<QPolygonF, QString>> decomposed = pathPlanner.decomposedROI(roi, drones, ROIPolygonMinAreaRect);
     cleanToOpenImage();
     addOverlay(getOverlayStackTop().first, "ROI Decomposition");
     QPainter painter(&getOverlayStackTop().first);
@@ -998,13 +1000,13 @@ ROIArea::showDecomposedROI()
                               QColor(70, 130, 180)};
 
     int colorIdx = 0;
-    for (const QPolygonF& poly : decomposed)
+    for (const auto& polyPair : decomposed)
     {
         QPen pen(colors[colorIdx % colors.size()]);
         pen.setWidth(3);
         painter.setPen(pen);
         painter.setBrush(Qt::NoBrush);
-        painter.drawPolygon(poly);
+        painter.drawPolygon(polyPair.first);
         colorIdx++;
     }
     painter.end();
@@ -1012,4 +1014,104 @@ ROIArea::showDecomposedROI()
 
     update();
     emit StatusMessageChanged(tr("Decomposed ROI polygons drawn on overlay."));
+}
+
+QList<QPointF>
+ROIArea::generateSweepWaypoints(const QPolygonF& subROI, const drone& d, const RotatedRect& mar) const
+{
+    // Parameters
+    QList<QPointF> waypoints;
+    if (subROI.size() < 3)
+        return waypoints;
+
+    // Sweep direction: along mar.uy (shorter side)
+    const QPointF& origin = mar.origin;
+    const QPointF& ux = mar.ux; // long side direction
+    const QPointF& uy = mar.uy; // short side direction
+    double width = mar.width;
+    double height = mar.height;
+
+    // Choose sweep axis: sweep along uy, lines parallel to ux
+    double step = d.max_y_footprint * (1.0 - SIDE_OVERLAP);
+    if (step <= 0.0)
+        step = 1.0; // fallback
+    int nSteps = std::max(1, int(std::ceil(height / step)));
+
+    // For each sweep line, compute intersection with subROI
+    bool zigzag = false;
+    for (int i = 0; i < nSteps; ++i)
+    {
+        double offset = i * step;
+        QPointF sweepStart = origin + offset * uy;
+        QPointF sweepEnd = sweepStart + width * ux;
+
+        // Build the sweep line
+        QLineF sweepLine(sweepStart, sweepEnd);
+
+        // Find intersection points with subROI edges
+        QList<QPointF> intersections;
+        for (int j = 0; j < subROI.size(); ++j)
+        {
+            QPointF p1 = subROI[j];
+            QPointF p2 = subROI[(j + 1) % subROI.size()];
+            QLineF edge(p1, p2);
+            QPointF intersectPt;
+            QLineF::IntersectionType type = sweepLine.intersects(edge, &intersectPt);
+            if (type == QLineF::BoundedIntersection)
+            {
+                intersections.append(intersectPt);
+            }
+        }
+        // Only even number of intersections expected for convex polygon
+        if (intersections.size() >= 2)
+        {
+            // Sort by projection along ux
+            std::sort(intersections.begin(), intersections.end(), [&](const QPointF& a, const QPointF& b) {
+                return QPointF::dotProduct(a - sweepStart, ux) < QPointF::dotProduct(b - sweepStart, ux);
+            });
+            // Add waypoints for this sweep (start to end or end to start for zigzag)
+            if (!zigzag)
+                waypoints << intersections[0] << intersections[1];
+            else
+                waypoints << intersections[1] << intersections[0];
+            zigzag = !zigzag;
+        }
+    }
+    return waypoints;
+}
+
+void
+ROIArea::showWaypoints()
+{
+    QList<QPair<QPolygonF, QString>> decomposedPairs = pathPlanner.getDecomposedROIs();
+    QList<QPolygonF> decomposedROIs;
+    for (const auto& pair : decomposedPairs)
+    {
+        decomposedROIs.append(pair.first);
+    }
+    QList<QPointF> listOfWaypoints;
+    QList<drone> drones = pathPlanner.getDroneList();
+    for (const drone& d : drones)
+    {
+        for (const QPolygonF& subROI : decomposedROIs)
+        {
+            QList<QPointF> waypoints = generateSweepWaypoints(subROI, d, ROIPolygonMinAreaRect);
+            listOfWaypoints.append(waypoints);
+        }
+    }
+    addOverlay(getOverlayStackTop().first, "Waypoints Overlay");
+    QPainter painter(&getOverlayStackTop().first);
+    if (!painter.isActive())
+        return;
+    painter.setRenderHint(QPainter::Antialiasing, true);
+    QPen pen(Qt::blue);
+    pen.setWidthF(2.0 / zoomFactor); // keep thickness with zoom
+    painter.setPen(pen);
+    painter.setBrush(Qt::NoBrush);
+    for (const QPointF& wp : listOfWaypoints)
+    {
+        painter.drawEllipse(wp, 3.0 / zoomFactor, 3.0 / zoomFactor); // small circle
+    }
+    painter.end();
+    update(); // request repaint so paintEvent draws it
 }
