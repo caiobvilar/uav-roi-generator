@@ -1007,10 +1007,24 @@ ROIArea::showDecomposedROI()
         painter.setPen(pen);
         painter.setBrush(Qt::NoBrush);
         painter.drawPolygon(polyPair.first);
+
+        // Draw Drone ID near the centroid of the polygon
+        QPointF centroid(0, 0);
+        for (const QPointF& pt : polyPair.first)
+            centroid += pt;
+        if (!polyPair.first.isEmpty())
+            centroid /= polyPair.first.size();
+
+        QFont font = painter.font();
+        font.setPointSize(14);
+        font.setBold(true);
+        painter.setFont(font);
+        painter.setPen(Qt::white);
+        painter.drawText(centroid, polyPair.second);
+
         colorIdx++;
     }
     painter.end();
-
 
     update();
     emit StatusMessageChanged(tr("Decomposed ROI polygons drawn on overlay."));

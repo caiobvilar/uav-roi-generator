@@ -183,7 +183,7 @@ PathPlanner::decomposedROI(QPolygonF& roi, QList<drone>& droneList, const Rotate
     if (roi.size() < 3 || droneList.isEmpty() || mar.width <= 0.0 || mar.height <= 0.0)
         return result;
 
-    // 1. Normalize relative capabilities
+    // 1. Normalize relative capabilities (unchanged)
     double totalCap = 0.0;
     for (const drone& d : droneList)
         totalCap += d.relative_capability_score;
@@ -194,24 +194,24 @@ PathPlanner::decomposedROI(QPolygonF& roi, QList<drone>& droneList, const Rotate
     for (const drone& d : droneList)
         caps.append(d.relative_capability_score / totalCap);
 
-    // 2. Partition MAR along its long side (width)
+    // 2. Your exact partition loop (unchanged)
     double start = 0.0;
+    double totalRoiArea = calculatePolygonArea(roi);
+    double minArea = 0.01 * totalRoiArea; // Only addition: threshold
+
     for (int i = 0; i < caps.size(); ++i)
     {
         double end = start + caps[i] * mar.width;
         QPolygonF rectPoly = makeRectPoly(mar, start, end);
-
-        // 3. Clip rectangle to ROI (intersection)
         QPolygonF clipped = rectPoly.intersected(roi);
-        if (clipped.size() >= 3)
-        {
-            // Pair with drone ID as QString
-            QString droneIdStr = QString::number(droneList[i].id);
-            result.append(qMakePair(clipped, droneIdStr));
-        }
 
+        if (clipped.size() >= 3 && calculatePolygonArea(clipped) >= minArea)
+        {
+            result.append(qMakePair(clipped, QString::number(droneList[i].id)));
+        }
         start = end;
     }
+
     return result;
 }
 
