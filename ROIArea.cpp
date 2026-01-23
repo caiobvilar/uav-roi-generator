@@ -1078,13 +1078,31 @@ ROIArea::generateSweepWaypoints(const QPolygonF& subROI, const drone& d, const R
 }
 
 void
-ROIArea::showWaypoints()
+ROIArea::generateWaypointsPerDecomposedArea()
 {
     auto decomposedPairs = pathPlanner.getDecomposedROIs();
     if (decomposedPairs.isEmpty())
         return;
 
     auto drones = pathPlanner.getDroneList();
+    if (drones.isEmpty())
+        return;
+    for (const auto& pair : decomposedPairs)
+    {
+        const auto& subROI = pair.first;
+        for (const auto& d : drones)
+        {
+            auto waypoints = generateSweepWaypoints(subROI, d, ROIPolygonMinAreaRect);
+            qDebug() << "Drone" << d.id << "has" << waypoints.size() << "waypoints for sub-ROI.";
+            allWaypointsPerDrone.append(qMakePair(d, waypoints));
+        }
+    }
+}
+
+void
+ROIArea::showWaypoints()
+{
+    cleanToOpenImage();
     addOverlay(getOverlayStackTop().first, "Waypoints Overlay");
 
     QPainter painter(&getOverlayStackTop().first);
@@ -1092,30 +1110,40 @@ ROIArea::showWaypoints()
         return;
     painter.setRenderHint(QPainter::Antialiasing, true);
 
-    QVector<QColor> colors = {Qt::red, Qt::green, Qt::blue, Qt::magenta};
-    for (int i = 0; i < std::min(decomposedPairs.size(), drones.size()); ++i)
+    QVector<QColor> colors = {Qt::red,  Qt::green,   Qt::blue,      Qt::magenta, Qt::yellow,
+                              Qt::cyan, Qt::darkRed, Qt::darkGreen, Qt::darkBlue};
+    int colorIdx = 0;
+
+    for (const auto& pair : allWaypointsPerDrone)
     {
-        const auto& subROI = decomposedPairs[i].first;
-        const auto& d = drones[i];
-        auto waypoints = generateSweepWaypoints(subROI, d, ROIPolygonMinAreaRect);
+        const drone& d = pair.first;
+        const QList<QPointF>& waypoints = pair.second;
+        QColor color = colors[colorIdx % colors.size()];
+        QPen pen(color);
+        pen.setWidth(3);
+        painter.setPen(pen);
+        painter.setBrush(color);
 
-        qDebug() << "Drone" << d.id << ":" << waypoints.size() << "wps";
+        // Draw waypoints as circles
+        for (const QPointF& pt : waypoints)
+        {
+            painter.drawEllipse(pt, 4, 4); // radius 4 pixels
+        }
 
-        if (waypoints.size() < 2)
-            continue;
+        // Draw drone ID near the first waypoint (if any)
+        if (!waypoints.isEmpty())
+        {
+            QFont font = painter.font();
+            font.setPointSize(12);
+            font.setBold(true);
+            painter.setFont(font);
+            painter.setPen(Qt::white);
+            painter.drawText(waypoints.first() + QPointF(8, -8), QString::number(d.id));
+        }
 
-        QColor col = colors[i % colors.size()];
-        QPen linePen(QColor(col.red(), col.green(), col.blue(), 180));
-        linePen.setWidthF(4.0); // Bold image px
-        painter.setPen(linePen);
-        painter.drawPolyline(waypoints.data(), waypoints.size());
-
-        QPen dotPen(col);
-        dotPen.setWidthF(2.0);
-        painter.setPen(dotPen);
-        for (const QPointF& wp : waypoints)
-            painter.drawEllipse(wp, 6.0, 6.0);
+        colorIdx++;
     }
+
     painter.end();
     update();
 }

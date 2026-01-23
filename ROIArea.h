@@ -88,6 +88,8 @@ class ROIArea : public QWidget
     }
 
     void
+    generateWaypointsPerDecomposedArea();
+    void
     calculateMinimumAreaRectangle();
     void
     openDroneFile(const QString& filename);
@@ -170,6 +172,7 @@ class ROIArea : public QWidget
     QPoint lastPanPos;
     bool panning = false;
     bool canDrawOnImage = false;
+    QList<QPair<drone, QList<QPointF>>> allWaypointsPerDrone;
 };
 
 #endif
