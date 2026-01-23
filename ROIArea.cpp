@@ -42,7 +42,7 @@ ROIArea::addOverlay(const QImage& baseImage, const QString& overlayLabel)
 
     painter.setRenderHint(QPainter::Antialiasing);
 
-    // 2. Draw bright yellow text in the top-right corner
+
     painter.setPen(Qt::yellow);
     QFont font = painter.font();
     font.setPointSize(14);
@@ -54,7 +54,7 @@ ROIArea::addOverlay(const QImage& baseImage, const QString& overlayLabel)
     QRect rect = overlay.rect().adjusted(margin, margin, -margin, -margin);
     painter.drawText(rect, Qt::AlignTop | Qt::AlignRight, text);
 
-    // 3. Store overlay and update current image pointer (Option 2)
+    
     overlayStack.push(qMakePair(overlay, text));
     canDrawOnImage = true; // allow drawing now
     emit StatusMessageChanged(tr("Drawing enabled: layer added"));
@@ -844,17 +844,36 @@ ROIArea::calculateMinimumAreaRectangle()
 }
 
 void
+
 ROIArea::drawMinimumAreaRectangle(QPainter& painter, QPen& pen)
 {
+    // Create a new overlay image based on the current top overlay
+    QImage overlayImage = getOverlayStackTop().first;
+    if (overlayImage.isNull())
+        return;
+
+    QPainter overlayPainter(&overlayImage);
+    if (!overlayPainter.isActive())
+        return;
+
     // Rectangle in image coordinates
     QPolygonF box = rotatedRectToPolygon(ROIPolygonMinAreaRect);
 
     pen.setColor(Qt::yellow);
     pen.setWidthF(2.0 / zoomFactor); // keep thickness with zoom
+    overlayPainter.setPen(pen);
+    overlayPainter.setBrush(Qt::NoBrush);
+    overlayPainter.setRenderHint(QPainter::Antialiasing, true);
+    overlayPainter.drawPolygon(box);
+    overlayPainter.end();
+
+    // Add the new overlay to the stack with a label
+    addOverlay(overlayImage, "Minimum Area Rectangle");
+
+    // Optionally, draw on the widget's painter as well (for immediate feedback)
     painter.setPen(pen);
     painter.setBrush(Qt::NoBrush);
-
-    painter.drawPolygon(box); // image-space polygon, zoom/pan already applied
+    painter.drawPolygon(box);
 }
 
 QPolygonF
