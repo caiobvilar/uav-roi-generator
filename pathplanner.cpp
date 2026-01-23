@@ -197,7 +197,7 @@ PathPlanner::decomposedROI(QPolygonF& roi, QList<drone>& droneList, const Rotate
     // 2. Your exact partition loop (unchanged)
     double start = 0.0;
     double totalRoiArea = calculatePolygonArea(roi);
-    double minArea = 0.01 * totalRoiArea; // Only addition: threshold
+    double minArea = 0.001 * totalRoiArea; // Only addition: threshold
 
     for (int i = 0; i < caps.size(); ++i)
     {

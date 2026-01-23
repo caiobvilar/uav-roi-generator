@@ -1097,35 +1097,46 @@ ROIArea::generateSweepWaypoints(const QPolygonF& subROI, const drone& d, const R
 void
 ROIArea::showWaypoints()
 {
-    QList<QPair<QPolygonF, QString>> decomposedPairs = pathPlanner.getDecomposedROIs();
-    QList<QPolygonF> decomposedROIs;
-    for (const auto& pair : decomposedPairs)
-    {
-        decomposedROIs.append(pair.first);
-    }
-    QList<QPointF> listOfWaypoints;
+    QList<QPair<QPolygonF, QString>> decomposedPairs = pathPlanner.getDecomposedROIs(); // N pairs
+    if (decomposedPairs.isEmpty())
+        return;
+
     QList<drone> drones = pathPlanner.getDroneList();
-    for (const drone& d : drones)
-    {
-        for (const QPolygonF& subROI : decomposedROIs)
-        {
-            QList<QPointF> waypoints = generateSweepWaypoints(subROI, d, ROIPolygonMinAreaRect);
-            listOfWaypoints.append(waypoints);
-        }
-    }
     addOverlay(getOverlayStackTop().first, "Waypoints Overlay");
+
     QPainter painter(&getOverlayStackTop().first);
     if (!painter.isActive())
         return;
     painter.setRenderHint(QPainter::Antialiasing, true);
-    QPen pen(Qt::blue);
-    pen.setWidthF(2.0 / zoomFactor); // keep thickness with zoom
-    painter.setPen(pen);
-    painter.setBrush(Qt::NoBrush);
-    for (const QPointF& wp : listOfWaypoints)
+
+    // FIXED: Match drone i to subROI i (not crossed!)
+    for (int i = 0; i < std::min(decomposedPairs.size(), drones.size()); ++i)
     {
-        painter.drawEllipse(wp, 3.0 / zoomFactor, 3.0 / zoomFactor); // small circle
+        const QPolygonF& subROI = decomposedPairs[i].first;
+        const drone& d = drones[i];
+
+        QList<QPointF> waypoints = generateSweepWaypoints(subROI, d, ROIPolygonMinAreaRect);
+        if (waypoints.size() < 2)
+            continue; // Skip empties
+
+        // Draw trajectory LINE + points
+        QPen linePen(QColor(255, 0, 0, 180)); // Red semi-transparent line
+        linePen.setWidthF(2.0 / zoomFactor);
+        painter.setPen(linePen);
+        painter.drawPolyline(waypoints.data(), waypoints.size()); // CONNECT waypoints!
+
+        // Dots per waypoint
+        QPen dotPen(Qt::blue);
+        dotPen.setWidthF(1.0 / zoomFactor);
+        painter.setPen(dotPen);
+        for (const QPointF& wp : waypoints)
+        {
+            painter.drawEllipse(wp, 4.0 / zoomFactor, 4.0 / zoomFactor);
+        }
+
+        qDebug() << "Drone" << d.id << "got" << waypoints.size() << "wps on subROI" << i;
     }
+
     painter.end();
-    update(); // request repaint so paintEvent draws it
+    update();
 }
