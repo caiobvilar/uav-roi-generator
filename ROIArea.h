@@ -51,8 +51,6 @@ class ROIArea : public QWidget
         return myPenColor;
     }
 
-    void
-    setOverlayStackTop(const QImage&);
     QPair<QImage, QString>&
     getOverlayStackTop();
     void
@@ -60,13 +58,13 @@ class ROIArea : public QWidget
     RotatedRect
     minimumAreaRectangle(const QList<QPointF>& hull);
     void
-    setCurrentImage(QImage* settingImage);
-    void
     clearPolygon();
     void
     addOverlay(const QImage&, const QString&);
     void
     removeOverlay();
+    void
+    cleanToOpenImage();
     void
     saveGEOJson(QByteArray& document);
     QByteArray
@@ -78,8 +76,9 @@ class ROIArea : public QWidget
     void
     drawGeoPolygonOnCurrentOverlay(const QList<QPointF>& geoPts);
     void
-    drawMinimumAreaRectangle(QPainter& painter, QPen& pen);
+    drawMinimumAreaRectangle();
 
+    void drawPolygonOutline(const QPolygonF& polygon);
     void
     setPolygonMinAreaRect(RotatedRect rect)
     {
@@ -155,6 +154,7 @@ class ROIArea : public QWidget
     int penWidth = 10;
     QColor myPenColor = Qt::blue;
     QStack<QPair<QImage, QString>> overlayStack;
+    QPair<QImage, QString> openImagePair;
     QPointF lastPoint;
     QList<QPointF> pointList;
     QPolygonF finalPolygon;

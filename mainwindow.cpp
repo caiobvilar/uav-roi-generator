@@ -115,6 +115,7 @@ void
 MainWindow::onCalculateMinAreaRectTriggered()
 {
     ui->roiArea->calculateMinimumAreaRectangle();
+    ui->roiArea->drawMinimumAreaRectangle();
 }
 
 void

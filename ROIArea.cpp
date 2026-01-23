@@ -14,7 +14,7 @@ ROIArea::ROIArea(QWidget* parent) : QWidget(parent), grahamScanner(this), pathPl
     this->setMinimumHeight(650);
     this->setMinimumWidth(1000);
 
-
+    openImagePair = qMakePair(QImage(), QString());
     // 1. Create and store an initial empty base image
     QImage baseImage(size(), QImage::Format_ARGB32_Premultiplied);
     baseImage.fill(Qt::transparent);
@@ -88,7 +88,11 @@ ROIArea::removeOverlay()
 
     update();
 }
-
+void ROIArea::cleanToOpenImage()
+{
+    cleanOverlayStack();
+    addOverlay(openImagePair.first, "");
+}
 void
 ROIArea::cleanOverlayStack()
 {
@@ -124,9 +128,9 @@ ROIArea::openImage(const QString& fileName)
         return false;
     }
 
-    // Option 2: store by value, keep pointer handle
     addOverlay(loadedImage, "");
-    canDrawOnImage = false; // precisa de overlay
+    openImagePair = qMakePair(loadedImage,"");
+    canDrawOnImage = false;
     emit StatusMessageChanged(tr("Drawing disabled: add new layer"));
     update();
     return true;
@@ -346,6 +350,17 @@ ROIArea::paintEvent(QPaintEvent* event)
 
     if (showFinalPolygon && finalPolygon.size() >= 3)
     {
+        drawPolygonOutline(finalPolygon);
+    }
+    painter.restore();
+}
+void ROIArea::drawPolygonOutline(const QPolygonF& polygon)
+{
+        addOverlay(getOverlayStackTop().first, "ROIArea Outline");
+        QImage &image = getOverlayStackTop().first;
+        QPainter painter(&image);
+        if (!painter.isActive())
+            return;
         painter.setRenderHint(QPainter::Antialiasing);
 
         QPen pen(Qt::red);
@@ -355,12 +370,8 @@ ROIArea::paintEvent(QPaintEvent* event)
         painter.setBrush(brush);
 
         painter.drawPolygon(finalPolygon);      // image coords
-        drawMinimumAreaRectangle(painter, pen); // same coords
-    }
-
-    painter.restore();
+        update();
 }
-
 void
 ROIArea::resizeEvent(QResizeEvent* event)
 {
@@ -845,20 +856,19 @@ ROIArea::calculateMinimumAreaRectangle()
 
 void
 
-ROIArea::drawMinimumAreaRectangle(QPainter& painter, QPen& pen)
+ROIArea::drawMinimumAreaRectangle()
 {
     // Create a new overlay image based on the current top overlay
-    QImage overlayImage = getOverlayStackTop().first;
-    if (overlayImage.isNull())
-        return;
-
-    QPainter overlayPainter(&overlayImage);
-    if (!overlayPainter.isActive())
-        return;
-
+    addOverlay(getOverlayStackTop().first, "Min Area Rect Overlay");
+    QPair<QImage, QString>& overlay = getOverlayStackTop();;
+    QImage& overlayImage = overlay.first;
     // Rectangle in image coordinates
     QPolygonF box = rotatedRectToPolygon(ROIPolygonMinAreaRect);
+    QPainter overlayPainter(&overlayImage);
+    if (!overlayPainter.isActive())
+        return; 
 
+    QPen pen;
     pen.setColor(Qt::yellow);
     pen.setWidthF(2.0 / zoomFactor); // keep thickness with zoom
     overlayPainter.setPen(pen);
@@ -866,14 +876,7 @@ ROIArea::drawMinimumAreaRectangle(QPainter& painter, QPen& pen)
     overlayPainter.setRenderHint(QPainter::Antialiasing, true);
     overlayPainter.drawPolygon(box);
     overlayPainter.end();
-
-    // Add the new overlay to the stack with a label
-    addOverlay(overlayImage, "Minimum Area Rectangle");
-
-    // Optionally, draw on the widget's painter as well (for immediate feedback)
-    painter.setPen(pen);
-    painter.setBrush(Qt::NoBrush);
-    painter.drawPolygon(box);
+    update(); // request repaint so paintEvent draws it
 }
 
 QPolygonF
@@ -967,10 +970,7 @@ ROIArea::showDecomposedROI()
 
     QPolygonF roi = finalPolygon;
     QList<QPolygonF> decomposed = pathPlanner.decomposedROI(roi, drones, ROIPolygonMinAreaRect);
-
-
-    // Remove the current overlay with drawings and revert to base image
-    removeOverlay();
+    cleanToOpenImage();
     addOverlay(getOverlayStackTop().first, "ROI Decomposition");
     QPainter painter(&getOverlayStackTop().first);
     if (!painter.isActive())
