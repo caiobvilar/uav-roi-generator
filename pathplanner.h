@@ -1,11 +1,11 @@
 #ifndef PATHPLANNER_H
 #define PATHPLANNER_H
 
-#include <QObject>
-#include <QPolygonF>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QObject>
+#include <QPolygonF>
 #include <cstdint>
 #include <qarraydatapointer.h>
 #include <qcontainerfwd.h>
@@ -13,27 +13,43 @@
 #include <qpolygon.h>
 #include <utils.h>
 
-
 class PathPlanner : public QObject
 {
     Q_OBJECT
-public:
-    explicit PathPlanner(QObject *parent = nullptr);
-    QList<drone> getDroneInfo(const QString &filename);
-    void calcDroneCameraFootprint(QList<drone> &droneList);
-    void calcFlightAltitude(QList<drone> &droneList);
-    void calcMaximumForwardVelocity(QList<drone> &droneList);
-    void calcDroneRelativeCapability(QList<drone> &droneList);
-    QList<QPolygonF> decomposedROI(QPolygonF &roi, QList<drone> &droneList, const RotatedRect &mar);
-    double calculatePolygonArea(const QPolygonF &polygon);
-    void setDroneList(QList<drone> list) { this->droneList = list; }
-    QList<drone> getDroneList() { return this->droneList; }
+  public:
+    explicit PathPlanner(QObject* parent = nullptr);
+    QList<drone>
+    getDroneInfo(const QString& filename);
+    void
+    calcDroneCameraFootprint(QList<drone>& droneList);
+    void
+    calcFlightAltitude(QList<drone>& droneList);
+    void
+    calcMaximumForwardVelocity(QList<drone>& droneList);
+    void
+    calcDroneRelativeCapability(QList<drone>& droneList);
+    QList<QPolygonF>
+    decomposedROI(QPolygonF& roi, QList<drone>& droneList, const RotatedRect& mar);
+    double
+    calculatePolygonArea(const QPolygonF& polygon);
 
-private:
+    void
+    setDroneList(QList<drone> list)
+    {
+        this->droneList = list;
+    }
+
+    QList<drone>
+    getDroneList()
+    {
+        return this->droneList;
+    }
+
+  private:
     QPolygonF RegionOfInterest;
     QList<drone> droneList;
 
-signals:
+  signals:
 };
 
 #endif // PATHPLANNER_H

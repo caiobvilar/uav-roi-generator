@@ -1,4 +1,7 @@
-#pragma once
+#ifndef UTILS_H_
+#define UTILS_H_
+
+
 #include <QPointF>
 #include <QRectF>
 #include <QString>
@@ -35,3 +38,4 @@ struct drone
     double ideal_flight_altitude = 0.0;
     double relative_capability_score = 0.0;
 };
+#endif // UTILS_H

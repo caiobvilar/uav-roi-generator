@@ -1,0 +1,76 @@
+# Qt build artifacts
+build/
+*.pro.user
+*.qmake.stash
+*.qmake.cache
+*.autosave
+
+# Qt Creator settings
+*.user
+*.user.*
+*.pro.user.*
+*.pro.user
+*.qmlproject.user
+*.creator.*
+*.creator
+*.pro.user
+*.pro.user.*
+
+# CMake build artifacts
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+Makefile
+CMakeLists.txt.user
+*.cmake
+*.cbp
+*.ninja
+*.ninja_deps
+*.ninja_log
+compile_commands.json
+
+# Ninja build system
+/build/
+build-*/
+
+# Generated files
+*.moc
+*.o
+*.obj
+*.so
+*.a
+*.dll
+*.exe
+*.app
+*.dylib
+*.qrc.depends
+*.qrc.cpp
+*.rcc
+*.gch
+
+# Qt MOC, UIC, RCC generated files
+moc_*.cpp
+moc_*.h
+ui_*.h
+qrc_*.cpp
+
+# Autogen
+*_autogen/
+*.autosave
+
+# OS-specific
+.DS_Store
+Thumbs.db
+
+# Editor/IDE
+.vscode/
+.idea/
+*.swp
+*~
+
+# Logs
+*.log
+
+# Test/temporary artifacts
+artifacts/
+Testing/
