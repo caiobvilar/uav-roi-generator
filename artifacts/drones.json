@@ -1,0 +1,67 @@
+{
+    "drones": [
+        {
+            "id": "drone_001",
+            "name": "DJI Mavic 3",
+            "battery": {
+                "capacity": 5000,
+                "current_capacity": "30" 
+            },
+            "max_velocity": {
+                "horizontal": 19.0,
+                "vertical": 6.0
+            },
+            "Camera":
+            {
+                "focal_length": "24.0",
+                "array_width": "17.3",
+                "array_height": "13.0",
+                "image_width": "5280",
+                "image_height": "3956",
+                "shutter_speed": "1.0" 
+            }
+        },
+        {
+            "id": "drone_002",
+            "name": "DJI Phantom 4 Pro",
+            "battery": {
+                "capacity": 5870,
+                "current_capacity": "80" 
+            },
+            "max_velocity": {
+                "horizontal": 20.0,
+                "vertical": 6.0
+            },
+            "Camera":
+            {
+                "focal_length": "8.8",
+                "array_width": "13.2",
+                "array_height": "8.8",
+                "image_width": "5472",
+                "image_height": "3648",
+                "shutter_speed": "1.0" 
+            }
+        },
+        {
+            "id": "drone_003",
+            "name": "Autel Robotics EVO II",
+            "battery": {
+                "capacity": 7100,
+                "current_capacity": "100" 
+            },
+            "max_velocity": {
+                "horizontal": 20.0,
+                "vertical": 6.0
+            },
+            "Camera":
+            {
+                "focal_length": "4.5",
+                "array_width": "6.4",
+                "array_height": "4.8",
+                "image_width": "8000",
+                "image_height": "6000",
+                "shutter_speed": "1.0" 
+            }
+        }
+    ]
+}

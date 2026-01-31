@@ -56,18 +56,20 @@ QList<QPointF> GrahamScan::grahamScan(QList<QPointF> pts)
         }
         hull.push_back(pts[i]);
     }
-    // Trying to ensure the polygon always ends where the first point is.
-    // Close the polygon explicitly
+    // Ensure the polygon always ends where the first point is.
     if (hull.size() >= 3 && hull.first() != hull.last()) {
         hull.push_back(hull.first());
     }
+    this->polygon = hull; // store computed hull
     return hull;
 }
+
 QPolygonF GrahamScan::ComputeHull()
 {
     QPolygonF points = grahamScan(this->polygon);
     return points;
 }
+
 void GrahamScan::addPointToPolygon(QPointF point)
 {
     this->polygon.append(point);

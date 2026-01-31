@@ -6,57 +6,79 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>1017</width>
-    <height>907</height>
+    <width>1366</width>
+    <height>932</height>
    </rect>
+  </property>
+  <property name="minimumSize">
+   <size>
+    <width>1300</width>
+    <height>932</height>
+   </size>
   </property>
   <property name="windowTitle">
    <string>MainWindow</string>
   </property>
   <widget class="QWidget" name="centralwidget">
-   <layout class="QVBoxLayout" name="verticalLayout">
-    <item alignment="Qt::AlignmentFlag::AlignHCenter">
-     <widget class="ROIArea" name="roiArea" native="true">
-      <property name="minimumSize">
-       <size>
-        <width>999</width>
-        <height>800</height>
-       </size>
-      </property>
-      <property name="focusPolicy">
-       <enum>Qt::FocusPolicy::ClickFocus</enum>
-      </property>
-      <property name="layoutDirection">
-       <enum>Qt::LayoutDirection::LeftToRight</enum>
-      </property>
-      <property name="autoFillBackground">
-       <bool>true</bool>
-      </property>
-     </widget>
-    </item>
-    <item>
-     <widget class="QPushButton" name="pushButton">
-      <property name="text">
-       <string>PushButton</string>
-      </property>
-     </widget>
-    </item>
-    <item alignment="Qt::AlignmentFlag::AlignRight">
-     <widget class="QLabel" name="label">
-      <property name="text">
-       <string>TextLabel</string>
-      </property>
-     </widget>
-    </item>
-   </layout>
+   <widget class="ROIArea" name="roiArea" native="true">
+    <property name="geometry">
+     <rect>
+      <x>10</x>
+      <y>10</y>
+      <width>999</width>
+      <height>800</height>
+     </rect>
+    </property>
+    <property name="minimumSize">
+     <size>
+      <width>999</width>
+      <height>800</height>
+     </size>
+    </property>
+    <property name="focusPolicy">
+     <enum>Qt::FocusPolicy::ClickFocus</enum>
+    </property>
+    <property name="layoutDirection">
+     <enum>Qt::LayoutDirection::LeftToRight</enum>
+    </property>
+    <property name="autoFillBackground">
+     <bool>true</bool>
+    </property>
+   </widget>
+   <widget class="QListWidget" name="listWidget">
+    <property name="geometry">
+     <rect>
+      <x>10</x>
+      <y>820</y>
+      <width>1001</width>
+      <height>70</height>
+     </rect>
+    </property>
+   </widget>
+   <widget class="QTreeView" name="treeView">
+    <property name="geometry">
+     <rect>
+      <x>1020</x>
+      <y>10</y>
+      <width>339</width>
+      <height>880</height>
+     </rect>
+    </property>
+    <property name="minimumSize">
+     <size>
+      <width>300</width>
+      <height>880</height>
+     </size>
+    </property>
+   </widget>
   </widget>
   <widget class="QMenuBar" name="menubar">
    <property name="geometry">
     <rect>
      <x>0</x>
      <y>0</y>
-     <width>1017</width>
-     <height>19</height>
+     <width>1366</width>
+     <height>23</height>
     </rect>
    </property>
    <widget class="QMenu" name="menuFile">
@@ -66,21 +88,44 @@
     <addaction name="actionOpen_File"/>
     <addaction name="actionClose_File"/>
     <addaction name="actionQuit"/>
+    <addaction name="separator"/>
+    <addaction name="actionOpen_GeoJSON_File"/>
    </widget>
    <widget class="QMenu" name="menuOptions">
     <property name="title">
      <string>Options</string>
     </property>
-    <addaction name="actionAdd_Layer"/>
+    <widget class="QMenu" name="menuSave_Drawn_Area">
+     <property name="title">
+      <string>Save Drawn Area</string>
+     </property>
+     <addaction name="actionSIRGAS2000_UTM24S"/>
+     <addaction name="actionWGS84"/>
+    </widget>
+    <widget class="QMenu" name="menuLayer">
+     <property name="title">
+      <string>Layer</string>
+     </property>
+     <addaction name="actionAdd_Layer_2"/>
+     <addaction name="actionRemove_Layer"/>
+    </widget>
+    <addaction name="menuLayer"/>
+    <addaction name="menuSave_Drawn_Area"/>
+    <addaction name="actionCalculate_Minimum_Area_Rectangle"/>
    </widget>
-   <widget class="QMenu" name="menuAbout">
+   <widget class="QMenu" name="menuCalcs">
     <property name="title">
-     <string>About</string>
+     <string>Calcs</string>
     </property>
+    <addaction name="actionOpen_Drone_Info"/>
+    <addaction name="actionCalculate_Drone_Cap"/>
+    <addaction name="actionDecompose_ROI"/>
+    <addaction name="actionShow_Decomposed_ROI"/>
+    <addaction name="actionWaypoints"/>
    </widget>
    <addaction name="menuFile"/>
    <addaction name="menuOptions"/>
-   <addaction name="menuAbout"/>
+   <addaction name="menuCalcs"/>
   </widget>
   <widget class="QStatusBar" name="statusbar"/>
   <action name="actionAbout">
@@ -103,9 +148,59 @@
     <string>Quit</string>
    </property>
   </action>
-  <action name="actionAdd_Layer">
+  <action name="actionSIRGAS2000_UTM24S">
+   <property name="text">
+    <string>SIRGAS2000/UTM24S</string>
+   </property>
+  </action>
+  <action name="actionWGS84">
+   <property name="text">
+    <string>WGS84</string>
+   </property>
+  </action>
+  <action name="actionOpen_GeoJSON_File">
+   <property name="text">
+    <string>Open GeoJSON File</string>
+   </property>
+  </action>
+  <action name="actionCalculate_Minimum_Area_Rectangle">
+   <property name="text">
+    <string>Calculate Minimum Area Rectangle</string>
+   </property>
+  </action>
+  <action name="actionAdd_Layer_2">
    <property name="text">
     <string>Add Layer</string>
+   </property>
+  </action>
+  <action name="actionRemove_Layer">
+   <property name="text">
+    <string>Remove Layer</string>
+   </property>
+  </action>
+  <action name="actionOpen_Drone_Info">
+   <property name="text">
+    <string>Open Drone Info</string>
+   </property>
+  </action>
+  <action name="actionCalculate_Drone_Cap">
+   <property name="text">
+    <string>Calculate Drone Cap.</string>
+   </property>
+  </action>
+  <action name="actionDecompose_ROI">
+   <property name="text">
+    <string>Decompose ROI</string>
+   </property>
+  </action>
+  <action name="actionShow_Decomposed_ROI">
+   <property name="text">
+    <string>Show Decomposed ROI</string>
+   </property>
+  </action>
+  <action name="actionWaypoints">
+   <property name="text">
+    <string>Waypoints</string>
    </property>
   </action>
  </widget>
