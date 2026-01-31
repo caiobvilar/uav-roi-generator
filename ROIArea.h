@@ -87,6 +87,18 @@ class ROIArea : public QWidget
         ROIPolygonMinAreaRect = rect;
     }
 
+    inline QPolygonF
+    getFinalPolygon()
+    {
+        return finalPolygon;
+    }
+
+    inline RotatedRect
+    getROIPolygonMinAreaRect()
+    {
+        return ROIPolygonMinAreaRect;
+    }
+
     void
     generateWaypointsPerDecomposedArea();
     void
@@ -132,6 +144,7 @@ class ROIArea : public QWidget
     keyPressEvent(QKeyEvent* event) override;
     void
     wheelEvent(QWheelEvent* event) override;
+
 
   private:
     GrahamScan grahamScanner;

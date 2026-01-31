@@ -176,105 +176,6 @@ PathPlanner::calculatePolygonArea(const QPolygonF& polygon)
     return qAbs(area) / 2.0;
 }
 
-QList<QPair<QPolygonF, QString>>
-PathPlanner::decomposedROI(QPolygonF& roi, QList<drone>& droneList, const RotatedRect& mar)
-{
-    QList<QPair<QPolygonF, QString>> result;
-
-    if (roi.size() < 3 || droneList.isEmpty() || mar.width <= 0.0 || mar.height <= 0.0)
-        return result;
-
-    double totalArea = calculatePolygonArea(roi);
-    if (totalArea <= 0.0)
-        return result;
-
-    // Normalize capabilities to [0,1] sum
-    double totalCap = 0.0;
-    for (const drone& d : droneList)
-        totalCap += d.relative_capability_score;
-    if (totalCap <= 0.0)
-        return result;
-
-    QVector<double> relCaps(droneList.size());
-    for (int i = 0; i < droneList.size(); ++i)
-        relCaps[i] = droneList[i].relative_capability_score / totalCap;
-
-    double cumTargetArea = 0.0; // Prefix target in original ROI area
-    double prevCut = 0.0;
-
-    for (int i = 0; i < droneList.size(); ++i)
-    {
-        const bool isLast = (i == droneList.size() - 1);
-
-        if (isLast)
-        {
-            // Last drone: intersection of [prevCut, mar.width] with original roi
-            QPolygonF finalRect = makeRectPoly(mar, prevCut, mar.width);
-            QPolygonF lastSlice = finalRect.intersected(roi);
-            if (lastSlice.size() >= 3)
-                result.append({lastSlice, QString::number(droneList[i].id)});
-            else
-                result.append({QPolygonF(), QString::number(droneList[i].id)});
-            break;
-        }
-
-        // Target for this slice: relCaps[i] * totalArea (in original ROI space)
-        double targetSliceArea = relCaps[i] * totalArea;
-        cumTargetArea += targetSliceArea;
-
-        // Binary search for cut position where prefix_area ≈ cumTargetArea
-        double low = prevCut, high = mar.width;
-        QPolygonF bestSlice;
-        double bestCut = prevCut;
-        double bestPrefixArea = 0.0;
-
-        for (int iter = 0; iter < 40; ++iter)
-        {
-            double mid = 0.5 * (low + high);
-
-            // Prefix rect: [0, mid] along mar.ux
-            QPolygonF prefixRect = makeRectPoly(mar, 0.0, mid);
-            QPolygonF prefixIntersect = prefixRect.intersected(roi);
-            double prefixArea = calculatePolygonArea(prefixIntersect);
-
-            // Slice area for this drone: prefix[mid] - prefix[prevCut]
-            double sliceArea = prefixArea - bestPrefixArea; // Incremental
-
-            if (std::fabs(sliceArea - targetSliceArea) < std::fabs(calculatePolygonArea(bestSlice) - targetSliceArea) &&
-                prefixIntersect.size() >= 3)
-            {
-                // Slice is [prevCut, mid]
-                QPolygonF sliceRect = makeRectPoly(mar, prevCut, mid);
-                bestSlice = sliceRect.intersected(roi);
-                bestCut = mid;
-                bestPrefixArea = prefixArea;
-            }
-
-            if (prefixArea < cumTargetArea)
-                low = mid;
-            else
-                high = mid;
-        }
-
-        // Fallback if slice is invalid: proportional cut
-        if (bestSlice.size() < 3)
-        {
-            double proportional = prevCut + relCaps[i] * (mar.width - prevCut);
-            QPolygonF fallbackRect = makeRectPoly(mar, prevCut, proportional);
-            bestSlice = fallbackRect.intersected(roi);
-            bestCut = proportional;
-        }
-
-        // Assign (guaranteed valid or empty)
-        result.append({bestSlice, QString::number(droneList[i].id)});
-
-        // Advance cut (no subtraction needed!)
-        prevCut = bestCut;
-    }
-
-    return result;
-}
-
 void
 PathPlanner::setDecomposedROIs(const QList<QPair<QPolygonF, QString>>& decompROIs)
 {
@@ -285,4 +186,244 @@ QList<QPair<QPolygonF, QString>>
 PathPlanner::getDecomposedROIs() const
 {
     return this->decomposedPolygons;
+}
+
+double
+PathPlanner::compute_partitioned_area(const double theta, QTransform& EF, const QTransform& AD, const QTransform& BC,
+                                      QPolygonF& target, double marHeight)
+{
+    // Based off "EF = AD * (1 - theta) + theta * BC;"
+    EF.setMatrix(AD.m11() * (1 - theta) + BC.m11() * theta, AD.m12() * (1 - theta) + BC.m12() * theta,
+                 AD.m13() * (1 - theta) + BC.m13() * theta, AD.m21() * (1 - theta) + BC.m21() * theta,
+                 AD.m22() * (1 - theta) + BC.m22() * theta, AD.m23() * (1 - theta) + BC.m23() * theta,
+                 AD.m31() * (1 - theta) + BC.m31() * theta, AD.m32() * (1 - theta) + BC.m32() * theta,
+                 AD.m33() * (1 - theta) + BC.m33() * theta);
+    QPolygonF divider = getBoundingBox(AD, EF, marHeight);
+    QPolygonF clipped = suth_hodgman_polygon_clipper(divider, target);
+    return std::abs(calculatePolygonArea(clipped));
+}
+
+double
+PathPlanner::binary_search(double cap, QTransform& EF, const QTransform& AD, const QTransform& BC, QPolygonF& target,
+                           double marHeight)
+{
+    double start = 0.0;
+    double RES = 0.00001;
+    const int N = static_cast<int>(1.0 / RES);
+    std::vector<double> ivec(N);
+    std::generate(ivec.begin(), ivec.end(), [=]() mutable {
+        start += RES;
+        return start;
+    });
+
+    int l = 0;
+    int r = N - 1;
+    while (l <= r)
+    {
+        int m = l + (r - l) / 2;
+        double pivot = ivec[m];
+        double area = compute_partitioned_area(pivot, EF, AD, BC, target, marHeight);
+        double diff = cap - area;
+        if (std::abs(diff) < 1e-8)
+        {
+            return pivot;
+        }
+        else if (diff > 0)
+        {
+            l = m + 1;
+        }
+        else
+        {
+            r = m - 1;
+        }
+    }
+    return ivec[std::max(0, r)];
+}
+
+QPolygonF
+PathPlanner::getBoundingBox(const QTransform& AD, const QTransform& EF, double height)
+{
+    // AD and EF are transforms for the left and right divider lines.
+    // height is the MAR height (in WGS84 units).
+    QPolygonF bbox;
+    // Bottom edge (y=0)
+    QPointF p0 = AD.map(QPointF(0, 0));
+    QPointF p1 = EF.map(QPointF(0, 0));
+    // Top edge (y=height)
+    QPointF p2 = EF.map(QPointF(0, height));
+    QPointF p3 = AD.map(QPointF(0, height));
+    bbox << p0 << p1 << p2 << p3 << p0; // closed
+    return bbox;
+}
+
+QPolygonF
+PathPlanner::suth_hodgman_polygon_clipper(QPolygonF& divider_poly, QPolygonF& target_poly)
+{
+    // Sutherland-Hodgman polygon clipping algorithm
+    QPolygonF inputPoly = target_poly;
+    QPolygonF outputPoly;
+
+    int dividerCount = divider_poly.size();
+    if (dividerCount < 3 || inputPoly.size() < 3)
+        return QPolygonF();
+
+    // Helper lambda: inside test for edge (clip edge from divider_poly)
+    auto inside = [](const QPointF& p, const QPointF& edgeStart, const QPointF& edgeEnd) {
+        // Returns true if p is on the left side of edge (edgeStart->edgeEnd)
+        return ((edgeEnd.x() - edgeStart.x()) * (p.y() - edgeStart.y()) -
+                (edgeEnd.y() - edgeStart.y()) * (p.x() - edgeStart.x())) >= 0.0;
+    };
+
+    // Helper lambda: compute intersection point of two lines (p1-p2 and q1-q2)
+    auto computeIntersection = [](const QPointF& p1, const QPointF& p2, const QPointF& q1,
+                                  const QPointF& q2) -> QPointF {
+        double a1 = p2.y() - p1.y();
+        double b1 = p1.x() - p2.x();
+        double c1 = a1 * p1.x() + b1 * p1.y();
+
+        double a2 = q2.y() - q1.y();
+        double b2 = q1.x() - q2.x();
+        double c2 = a2 * q1.x() + b2 * q1.y();
+
+        double det = a1 * b2 - a2 * b1;
+        if (std::fabs(det) < 1e-12)
+            return p2; // Lines are parallel, return p2 as fallback
+
+        double x = (b2 * c1 - b1 * c2) / det;
+        double y = (a1 * c2 - a2 * c1) / det;
+        return QPointF(x, y);
+    };
+
+    // For each edge of the divider (clip) polygon
+    for (int i = 0; i < dividerCount; ++i)
+    {
+        outputPoly.clear();
+        QPointF clipEdgeStart = divider_poly[i];
+        QPointF clipEdgeEnd = divider_poly[(i + 1) % dividerCount];
+
+        int inputCount = inputPoly.size();
+        if (inputCount == 0)
+            break;
+
+        for (int j = 0; j < inputCount; ++j)
+        {
+            QPointF curr = inputPoly[j];
+            QPointF prev = inputPoly[(j + inputCount - 1) % inputCount];
+            bool currInside = inside(curr, clipEdgeStart, clipEdgeEnd);
+            bool prevInside = inside(prev, clipEdgeStart, clipEdgeEnd);
+
+            if (currInside)
+            {
+                if (!prevInside)
+                {
+                    // Edge enters the clip region: add intersection
+                    QPointF intersect = computeIntersection(prev, curr, clipEdgeStart, clipEdgeEnd);
+                    outputPoly << intersect;
+                }
+                // Add current point
+                outputPoly << curr;
+            }
+            else if (prevInside)
+            {
+                // Edge exits the clip region: add intersection
+                QPointF intersect = computeIntersection(prev, curr, clipEdgeStart, clipEdgeEnd);
+                outputPoly << intersect;
+            }
+            // else: both outside, add nothing
+        }
+        inputPoly = outputPoly;
+    }
+
+    // Optionally, ensure closed polygon (Qt polygons are usually open, but close if needed)
+    if (!inputPoly.isEmpty() && inputPoly.first() != inputPoly.last())
+        inputPoly << inputPoly.first();
+
+    return inputPoly;
+}
+
+QPolygonF
+PathPlanner::makeDividerPoly(const RotatedRect& left, const RotatedRect& right)
+{
+    double h = left.height; // or right.height, should be the same
+    QPolygonF poly;
+    // Bottom edge (y=0)
+    QPointF p0 = left.origin;
+    QPointF p1 = right.origin;
+    // Top edge (y=h)
+    QPointF p2 = right.origin + h * right.uy;
+    QPointF p3 = left.origin + h * left.uy;
+    poly << p0 << p1 << p2 << p3 << p0; // closed
+    return poly;
+}
+
+QTransform
+PathPlanner::rectToTransform(const RotatedRect& rect)
+{
+    QTransform result;
+    // Include translation (origin) in m13, m23
+    result = QTransform(rect.ux.x(), rect.uy.x(), rect.origin.x(), // m11, m12, m13
+                        rect.ux.y(), rect.uy.y(), rect.origin.y(), // m21, m22, m23
+                        0, 0, 1);                                  // m31, m32, m33
+    qInfo() << result.map(QPointF(0, 0)) << " =?= " << rect.origin;
+    qInfo() << result.map(QPointF(0, rect.height)) << " =?= " << (rect.origin + rect.height * rect.uy);
+    return result;
+}
+
+QList<QPair<QPolygonF, QString>>
+PathPlanner::decomposedROI(QPolygonF& roi, QList<drone>& droneList, const RotatedRect& mar)
+{
+    QList<QPair<QPolygonF, QString>> result;
+
+    if (roi.size() < 3 || droneList.isEmpty() || mar.width <= 0.0 || mar.height <= 0.0)
+        return result;
+
+    // Calculate total capability sum
+    double totalCap = 0.0;
+    QVector<double> capabilities;
+    for (const drone& d : droneList)
+    {
+        capabilities.append(d.relative_capability_score);
+        totalCap += d.relative_capability_score;
+    }
+    if (totalCap <= 0.0)
+        return result;
+
+    // Total area of ROI
+    double totalArea = calculatePolygonArea(roi);
+
+    // Decompose using direct vector math
+    double start = 0.0;
+    double cumCap = 0.0;
+    for (int i = 0; i < capabilities.size(); ++i)
+    {
+        cumCap += capabilities[i];
+        double targetArea = cumCap / totalCap * totalArea;
+
+        // Binary search for 'end' along MAR width
+        double left = start;
+        double right = mar.width;
+        double end = right;
+        for (int iter = 0; iter < 30; ++iter) // 30 iterations for high precision
+        {
+            double mid = (left + right) / 2.0;
+            QPolygonF divider = makeRectPoly(mar, start, mid);
+            QPolygonF clipped = suth_hodgman_polygon_clipper(divider, roi);
+            double area = calculatePolygonArea(clipped);
+            if (area < (targetArea - 1e-8))
+                left = mid;
+            else
+                right = mid;
+        }
+        end = (left + right) / 2.0;
+
+        QPolygonF divider = makeRectPoly(mar, start, end);
+        QPolygonF polygon = suth_hodgman_polygon_clipper(divider, roi);
+        qInfo() << "Divider for drone" << droneList[i].id << ":" << divider;
+        qInfo() << "Clipped polygon for drone" << droneList[i].id << "vertices:" << polygon.size()
+                << "area:" << calculatePolygonArea(polygon);
+        result.append({polygon, QString::number(droneList[i].id)});
+        start = end;
+    }
+
+    return result;
 }

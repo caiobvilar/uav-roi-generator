@@ -3,7 +3,9 @@
 
 
 #include <QPointF>
+#include <QPolygonF>
 #include <QRectF>
+#include <QSize>
 #include <QString>
 
 #define DESIRED_GSD 2.0     // This asumes a desired ground sample distance of 2.0cm/pixel for precision agriculture
@@ -42,4 +44,35 @@ struct drone
     double ideal_flight_altitude = 0.0;
     double relative_capability_score = 0.0;
 };
+
+// Heuristic: WGS84 (projected meters) coordinates are typically large (e.g., > 10,000)
+inline bool
+isPolygonWGS84(const QPolygonF& poly)
+{
+    if (poly.isEmpty())
+        return false;
+    int countWGS84 = 0;
+    for (const QPointF& pt : poly)
+    {
+        if (std::abs(pt.x()) > 10000 && std::abs(pt.y()) > 10000)
+            countWGS84++;
+    }
+    return countWGS84 > poly.size() / 2;
+}
+
+// Checks if most points are within the given widget's pixel bounds
+inline bool
+isPolygonPixel(const QPolygonF& poly, int width, int height)
+{
+    if (poly.isEmpty())
+        return false;
+    int countPixel = 0;
+    for (const QPointF& pt : poly)
+    {
+        if (pt.x() >= 0 && pt.x() < width && pt.y() >= 0 && pt.y() < height)
+            countPixel++;
+    }
+    return countPixel > poly.size() / 2;
+}
+
 #endif // UTILS_H

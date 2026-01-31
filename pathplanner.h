@@ -5,8 +5,6 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QObject>
-#include <QPolygonF>
-#include <cstdint>
 #include <qarraydatapointer.h>
 #include <qcontainerfwd.h>
 #include <qlist.h>
@@ -32,6 +30,11 @@ class PathPlanner : public QObject
     decomposedROI(QPolygonF& roi, QList<drone>& droneList, const RotatedRect& mar);
     double
     calculatePolygonArea(const QPolygonF& polygon);
+    double
+    binary_search(double relative_cap, QPolygonF pol);
+
+    QPolygonF
+    suth_hodgman_polygon_clipper(QPolygonF& divider_poly, QPolygonF& target_poly);
 
     void
     setDroneList(QList<drone> list)
@@ -45,10 +48,23 @@ class PathPlanner : public QObject
         return this->droneList;
     }
 
+    QPolygonF
+    makeDividerPoly(const RotatedRect& left, const RotatedRect& right);
     void
     setDecomposedROIs(const QList<QPair<QPolygonF, QString>>& decompROIs);
     QList<QPair<QPolygonF, QString>>
     getDecomposedROIs() const;
+
+    double
+    compute_partitioned_area(const double theta, QTransform& EF, const QTransform& AD, const QTransform& BC,
+                             QPolygonF& target, double marHeight);
+    QPolygonF
+    getBoundingBox(const QTransform& AD, const QTransform& EF, double height);
+    QTransform
+    rectToTransform(const RotatedRect& rect);
+    double
+    binary_search(double cap, QTransform& EF, const QTransform& AD, const QTransform& BC, QPolygonF& target,
+                  double marHeight);
 
   private:
     QPolygonF RegionOfInterest;
@@ -56,5 +72,6 @@ class PathPlanner : public QObject
     QList<QPair<QPolygonF, QString>> decomposedPolygons;
   signals:
 };
+
 
 #endif // PATHPLANNER_H

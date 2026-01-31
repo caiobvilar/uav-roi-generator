@@ -2,7 +2,9 @@
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR BSD-3-Clause
 
 #include "ROIArea.h"
+#include "GDALHandler.h"
 #include "pathplanner.h"
+#include "utils.h"
 
 #include <QDateTime>
 #include <QMouseEvent>
@@ -211,7 +213,7 @@ ROIArea::keyPressEvent(QKeyEvent* event)
             finalPolygon = snapPolygon(finalPolygon);                               // Snaps last point to the first
             showFinalPolygon = !finalPolygon.isEmpty() && finalPolygon.size() >= 3; // only if it’s a real polygon
             isPolygonDrawn = showFinalPolygon;
-            qDebug() << "finalPolygon size =" << finalPolygon.size() << " showFinalPolygon =" << showFinalPolygon;
+            qInfo() << "finalPolygon size =" << finalPolygon.size() << " showFinalPolygon =" << showFinalPolygon;
             drawPolygonOutline(finalPolygon); // image coords
             update();                         // triggers paintEvent
         }
@@ -360,6 +362,17 @@ void
 ROIArea::drawPolygonOutline(const QPolygonF& polygon)
 {
     cleanToOpenImage();
+    QPolygonF toDrawPolygon;
+    if (isPolygonWGS84(polygon))
+    {
+        qInfo() << "Polygon was in WGS84";
+        toDrawPolygon = gdalHandler.geoPolygonToPixels(polygon);
+    }
+    else
+    {
+        toDrawPolygon = polygon;
+        qInfo() << "Polygon is in Pixel space";
+    }
     QImage& image = getOverlayStackTop().first;
     QPainter painter(&image);
     if (!painter.isActive())
@@ -372,7 +385,7 @@ ROIArea::drawPolygonOutline(const QPolygonF& polygon)
     QBrush brush(QColor(255, 0, 0, 80));
     painter.setBrush(brush);
 
-    painter.drawPolygon(finalPolygon); // image coords
+    painter.drawPolygon(toDrawPolygon); // image coords
     update();
 }
 
@@ -839,10 +852,11 @@ ROIArea::calculateMinimumAreaRectangle()
         return;
 
     // Remove the duplicate closing point if it exists
+    QPolygonF geoPoly = gdalHandler.polygonToGeo(finalPolygon);
     QList<QPointF> hull;
-    for (int i = 0; i < finalPolygon.size(); ++i)
+    for (int i = 0; i < geoPoly.size(); ++i)
     {
-        hull.append(finalPolygon[i]);
+        hull.append(geoPoly[i]);
     }
 
     // If last point equals first point, remove it
@@ -858,14 +872,14 @@ ROIArea::calculateMinimumAreaRectangle()
 }
 
 void
-
 ROIArea::drawMinimumAreaRectangle()
 {
     // Create a new overlay image based on the current top overlay
     addOverlay(getOverlayStackTop().first, "Min Area Rect Overlay");
     QImage& overlayImage = getOverlayStackTop().first;
     // Rectangle in image coordinates
-    QPolygonF box = rotatedRectToPolygon(ROIPolygonMinAreaRect);
+    QPolygonF PixelMARPoly = rotatedRectToPolygon(ROIPolygonMinAreaRect);
+    QPolygonF box = gdalHandler.geoPolygonToPixels(PixelMARPoly);
     QPainter overlayPainter(&overlayImage);
     if (!overlayPainter.isActive())
         return;
@@ -878,6 +892,23 @@ ROIArea::drawMinimumAreaRectangle()
     overlayPainter.setRenderHint(QPainter::Antialiasing, true);
     overlayPainter.drawPolygon(box);
     overlayPainter.end();
+
+    // WGS84 message
+    QString msgWGS = QString("MinAreaRect[WGS84]: origin=(%1, %2), width=%3, height=%4, angle=%5 rad")
+                         .arg(ROIPolygonMinAreaRect.origin.x(), 0, 'f', 2)
+                         .arg(ROIPolygonMinAreaRect.origin.y(), 0, 'f', 2)
+                         .arg(ROIPolygonMinAreaRect.width, 0, 'f', 2)
+                         .arg(ROIPolygonMinAreaRect.height, 0, 'f', 2)
+                         .arg(ROIPolygonMinAreaRect.angle, 0, 'f', 4);
+    emit StatusMessageChanged(msgWGS);
+
+    // Pixel-space message: show all four corners
+    QStringList pts;
+    for (const QPointF& pt : box)
+        pts << QString("(%1, %2)").arg(pt.x(), 0, 'f', 1).arg(pt.y(), 0, 'f', 1);
+    QString msgPix = QString("MinAreaRect[PIXELS]: %1").arg(pts.join(", "));
+    emit StatusMessageChanged(msgPix);
+
     update(); // request repaint so paintEvent draws it
 }
 
@@ -947,37 +978,44 @@ ROIArea::decomposeROI()
     }
 
     // Make a copy of the polygon and drone list for the decomposition
-    QPolygonF roi = finalPolygon;
+    QPolygonF roi = gdalHandler.polygonToGeo(finalPolygon);
+    // Ensure polygon is in geo coordinates.
     QList<QPair<QPolygonF, QString>> decomposed = pathPlanner.decomposedROI(roi, drones, ROIPolygonMinAreaRect);
+
+    // Emit a message for each decomposed polygon's vertices
+    for (int i = 0; i < decomposed.size(); ++i)
+    {
+        const QPolygonF& poly = decomposed[i].first;
+        QStringList pts;
+        for (const QPointF& pt : poly)
+            pts << QString("(%1, %2)").arg(pt.x(), 0, 'f', 2).arg(pt.y(), 0, 'f', 2);
+        QString msg = QString("Decomposed[%1] DroneID=%2: %3").arg(i).arg(decomposed[i].second).arg(pts.join(", "));
+        emit StatusMessageChanged(msg);
+    }
+
     pathPlanner.setDecomposedROIs(decomposed);
     // You can now use 'decomposed' as needed, e.g., store, draw, or emit a signal
-    qDebug() << "Decomposed ROI into" << decomposed.size() << "sub-polygons.";
+    qInfo() << "Decomposed ROI into" << decomposed.size() << "sub-polygons.";
 }
 
 void
 ROIArea::showDecomposedROI()
 {
-    if (finalPolygon.size() < 3)
-    {
-        qWarning() << "No valid ROI polygon to show decomposition.";
-        return;
-    }
-
     QList<drone> drones = pathPlanner.getDroneList();
     if (drones.isEmpty())
     {
-        qWarning() << "No drones loaded for decomposition.";
+        qInfo() << "No drones loaded for decomposition.";
         return;
     }
+    QPolygonF pixelSpacePolygon = QPolygonF();
 
-    QPolygonF roi = finalPolygon;
-    QList<QPair<QPolygonF, QString>> decomposed = pathPlanner.decomposedROI(roi, drones, ROIPolygonMinAreaRect);
+    QList<QPair<QPolygonF, QString>> decomposed = pathPlanner.getDecomposedROIs();
     cleanToOpenImage();
     addOverlay(getOverlayStackTop().first, "ROI Decomposition");
     QPainter painter(&getOverlayStackTop().first);
     if (!painter.isActive())
     {
-        qDebug() << "drawGeoPolygonOnImage: painter not active";
+        qInfo() << "drawGeoPolygonOnImage: painter not active";
         return;
     }
 
@@ -1006,7 +1044,26 @@ ROIArea::showDecomposedROI()
         pen.setWidth(3);
         painter.setPen(pen);
         painter.setBrush(Qt::NoBrush);
-        painter.drawPolygon(polyPair.first);
+        if (isPolygonWGS84(polyPair.first))
+        {
+            emit StatusMessageChanged(tr("[ERROR]: Polygon was in WGS84 Space | Converted to Pixel Space"));
+            pixelSpacePolygon = gdalHandler.geoPolygonToPixels(polyPair.first);
+            qInfo() << "[ERROR]: Polygon was in WGS84 Space | Converted to Pixel Space.";
+            // Pixel-space message: show all four corners
+            QStringList pts;
+            for (const QPointF& pt : pixelSpacePolygon)
+                pts << QString("(%1, %2)").arg(pt.x(), 0, 'f', 1).arg(pt.y(), 0, 'f', 1);
+            QString msgPix = QString("polPyPair.first[PIXELS]: %1").arg(pts.join(", "));
+            qInfo() << msgPix;
+            emit StatusMessageChanged(msgPix);
+        }
+        else
+        {
+
+            emit StatusMessageChanged(tr("[DEBUG]: Polygon is in Pixel Space | Nothing done"));
+            qInfo() << "[Debug]: Polygon was in pixel Space | Nothing done to it.";
+        }
+        painter.drawPolygon(pixelSpacePolygon);
 
         // Draw Drone ID near the centroid of the polygon
         QPointF centroid(0, 0);
@@ -1093,7 +1150,7 @@ ROIArea::generateWaypointsPerDecomposedArea()
         for (const auto& d : drones)
         {
             auto waypoints = generateSweepWaypoints(subROI, d, ROIPolygonMinAreaRect);
-            qDebug() << "Drone" << d.id << "has" << waypoints.size() << "waypoints for sub-ROI.";
+            qInfo() << "Drone" << d.id << "has" << waypoints.size() << "waypoints for sub-ROI.";
             allWaypointsPerDrone.append(qMakePair(d, waypoints));
         }
     }

@@ -227,7 +227,33 @@ MainWindow::onCalculateDroneCapabilities()
 void
 MainWindow::onDecomposeROI()
 {
+    QPolygonF roi = ui->roiArea->getFinalPolygon(); // or however you access it
+    qInfo() << "ROI size:" << roi.size() << "Points:" << roi;
+    RotatedRect mar = ui->roiArea->getROIPolygonMinAreaRect(); // or similar
+    qInfo() << "MAR origin:" << mar.origin << "width:" << mar.width << "height:" << mar.height;
+    QList<drone> drones = ui->roiArea->getPathPlanner().getDroneList();
+    for (const drone& d : drones)
+        qInfo() << "Drone" << d.id << "capability:" << d.relative_capability_score;
     ui->roiArea->decomposeROI();
+
+    // Get the decomposed polygons from roiArea's pathPlanner
+    QList<QPair<QPolygonF, QString>> decomposed = ui->roiArea->getPathPlanner().getDecomposedROIs();
+
+
+    int idx = 0;
+    for (const auto& pair : decomposed)
+    {
+        const QPolygonF& poly = pair.first;
+        const QString& droneId = pair.second;
+        double area = ui->roiArea->getPathPlanner().calculatePolygonArea(poly);
+        QString desc = QString("Polygon %1 | Drone ID: %2 | Vertices: %3 | Area: %4")
+                           .arg(idx + 1)
+                           .arg(droneId)
+                           .arg(poly.size())
+                           .arg(area, 0, 'f', 2);
+        ui->listWidget->addItem(desc);
+        idx++;
+    }
 }
 
 void
@@ -239,7 +265,14 @@ MainWindow::onShowDecomposedROI()
 void
 MainWindow::on_roiArea_StatusMessageChanged(const QString& text)
 {
+    // Optionally keep the status bar message
     statusBar()->showMessage(text);
+
+    // Append the message to the listWidget
+    ui->listWidget->addItem(text);
+
+    // Optionally scroll to the bottom to show the latest message
+    ui->listWidget->scrollToBottom();
 }
 
 void
