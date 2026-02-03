@@ -1411,7 +1411,19 @@ ROIArea::showWaypoints()
         qreal imageMinDim = qMin(overlayImage.width(), overlayImage.height());
         qreal dotRadius = qBound(0.5, imageMinDim * 0.0005, 2.0); // 0.05% of image, range [0.5, 2.0]
 
-        // Draw each waypoint as a tiny dot
+        // Draw lines connecting consecutive waypoints (w_1 -> w_2 -> ... -> w_n)
+        QPen linePen(color);
+        linePen.setWidthF(qMax(0.5, dotRadius * 0.5)); // Line thinner than dots
+        painter.setPen(linePen);
+        painter.setBrush(Qt::NoBrush);
+        for (int i = 0; i < pixelWaypoints.size() - 1; ++i)
+        {
+            painter.drawLine(pixelWaypoints[i], pixelWaypoints[i + 1]);
+        }
+
+        // Draw each waypoint as a tiny dot (on top of lines)
+        painter.setPen(pen);
+        painter.setBrush(color);
         for (const QPointF& pixelPt : pixelWaypoints)
         {
             painter.drawEllipse(pixelPt, dotRadius, dotRadius);
