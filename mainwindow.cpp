@@ -278,5 +278,6 @@ MainWindow::on_roiArea_StatusMessageChanged(const QString& text)
 void
 MainWindow::onCalculateWaypoints()
 {
+    ui->roiArea->generateWaypointsPerDecomposedArea();
     ui->roiArea->showWaypoints();
 }

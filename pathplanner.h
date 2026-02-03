@@ -66,7 +66,36 @@ class PathPlanner : public QObject
     binary_search(double cap, QTransform& EF, const QTransform& AD, const QTransform& BC, QPolygonF& target,
                   double marHeight);
 
-  private:
+    // Path planning algorithm - Find longest bounding line and its slope
+    // Searches consecutive edges (bounding lines) l_{k,k+1} of the polygon
+    // Returns: QPair of (indices pair, slope) where indices pair is (k, k+1)
+    QPair<QPair<int, int>, double>
+    findLongestBoundingLineWithSlope(const QPolygonF& area);
+    // Path planning algorithm - Helper: Compute internal angle at vertex i
+    // Returns angle in radians between edges (v_{i-1}, v_i) and (v_i, v_{i+1})
+    double
+    computeInternalAngle(const QPolygonF& area, int i);
+
+    // Path planning algorithm - Compute distance with angle adjustment
+    // Returns distance from v_i to v_{i+1}, adjusted if internal angle > π/2
+    // Uses L_x (max_x_footprint) for the angle adjustment
+    double
+    computeDistanceWithAngleAdjustment(const QPolygonF& area, int i, double max_x_footprint);
+
+    // Path planning algorithm - Main loop computing waypoints with angle adjustment
+    // while (i != k): iterates from start vertex to longest line's starting vertex
+    // Returns: list of waypoints along the scanning direction
+    QList<QPointF>
+    computeWaypointsLoop(const QPolygonF& area, int start_i, int k, double max_x_footprint, double max_y_footprint,
+                         double slope);
+
+    // Path planning algorithm - Compute waypoints using MAR-based sweep pattern
+    // Uses the Minimum Area Rectangle to bound waypoints within the sub-ROI
+    // Returns: list of waypoints that are guaranteed to be inside the polygon
+    QList<QPointF>
+    computeWaypointsWithMAR(const QPolygonF& area, double max_x_footprint, double max_y_footprint,
+                            const RotatedRect& mar);
+
     QPolygonF RegionOfInterest;
     QList<drone> droneList;
     QList<QPair<QPolygonF, QString>> decomposedPolygons;

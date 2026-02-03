@@ -868,7 +868,27 @@ ROIArea::calculateMinimumAreaRectangle()
         }
     }
 
-    ROIPolygonMinAreaRect = minimumAreaRectangle(hull); // image coords
+    // Compute MAR in WGS84/projected coordinates (meters)
+    // The hull is already in geo coordinates from polygonToGeo() above
+    ROIPolygonMinAreaRect = minimumAreaRectangle(hull);
+
+    // Validate result is in WGS84
+    if (!isRotatedRectWGS84(ROIPolygonMinAreaRect))
+    {
+        qWarning() << "Warning: MAR origin doesn't look like WGS84 coordinates:" << ROIPolygonMinAreaRect.origin;
+        emit StatusMessageChanged(tr("<font color='red'>[WARNING]: MAR origin doesn't look like WGS84 coordinates - "
+                                     "check input polygon</font>"));
+    }
+    else
+    {
+        qInfo() << "MAR computed in WGS84 coordinates:";
+        qInfo() << "  Origin:" << ROIPolygonMinAreaRect.origin;
+        qInfo() << "  Dimensions (m): width=" << ROIPolygonMinAreaRect.width
+                << " height=" << ROIPolygonMinAreaRect.height;
+        emit StatusMessageChanged(tr("[INFO]: MAR computed in WGS84 - width=%1m, height=%2m")
+                                      .arg(ROIPolygonMinAreaRect.width, 0, 'f', 2)
+                                      .arg(ROIPolygonMinAreaRect.height, 0, 'f', 2));
+    }
 }
 
 void
@@ -1139,68 +1159,281 @@ ROIArea::generateWaypointsPerDecomposedArea()
 {
     auto decomposedPairs = pathPlanner.getDecomposedROIs();
     if (decomposedPairs.isEmpty())
+    {
+        qWarning() << "No decomposed ROIs available for waypoint generation.";
+        emit StatusMessageChanged(
+            tr("<font color='red'>[WARNING]: No decomposed ROIs available for waypoint generation.</font>"));
         return;
+    }
 
     auto drones = pathPlanner.getDroneList();
     if (drones.isEmpty())
+    {
+        qWarning() << "No drones available for waypoint generation.";
+        emit StatusMessageChanged(
+            tr("<font color='red'>[WARNING]: No drones available for waypoint generation.</font>"));
         return;
+    }
+
+    // === VALIDATE MAR IS IN WGS84 COORDINATES ===
+    if (!isRotatedRectWGS84(ROIPolygonMinAreaRect))
+    {
+        qCritical() << "ERROR: ROIPolygonMinAreaRect is not in WGS84 coordinates!";
+        qCritical() << "  Origin:" << ROIPolygonMinAreaRect.origin;
+        qCritical() << "  Call calculateMinimumAreaRectangle() first with a geo-converted polygon.";
+        emit StatusMessageChanged(tr("<font color='red'>[CRITICAL]: MAR not in WGS84 coordinates! Call "
+                                     "calculateMinimumAreaRectangle() first.</font>"));
+        return;
+    }
+
+    allWaypointsPerDrone.clear();
+
     for (const auto& pair : decomposedPairs)
     {
-        const auto& subROI = pair.first;
+        const QPolygonF& subROI = pair.first;
+        const QString& droneId = pair.second;
+
+        if (subROI.size() < 3)
+        {
+            qWarning() << "Sub-ROI for drone" << droneId << "has less than 3 vertices, skipping.";
+            emit StatusMessageChanged(
+                tr("<font color='red'>[WARNING]: Sub-ROI for drone %1 has &lt;3 vertices, skipping.</font>")
+                    .arg(droneId));
+            continue;
+        }
+
+        // Ensure polygon is in geo coordinates (WGS84)
+        QPolygonF subROIWGS84 = subROI;
+        if (!isPolygonWGS84(subROI))
+        {
+            qInfo() << "Converting sub-ROI from pixel to WGS84 for drone" << droneId;
+            emit StatusMessageChanged(tr("[INFO]: Converting sub-ROI to WGS84 coordinates for drone %1").arg(droneId));
+            subROIWGS84 = gdalHandler.polygonToGeo(subROI);
+
+            // Verify conversion succeeded
+            if (!isPolygonWGS84(subROIWGS84))
+            {
+                qCritical() << "ERROR: Failed to convert sub-ROI to WGS84 for drone" << droneId;
+                emit StatusMessageChanged(
+                    tr("<font color='red'>[CRITICAL]: Failed to convert sub-ROI to WGS84 for drone %1</font>")
+                        .arg(droneId));
+                continue;
+            }
+        }
+
+        // Find the drone associated with this sub-ROI
+        drone associatedDrone;
+        bool droneFound = false;
+        uint32_t droneIdNum = droneId.toUInt();
         for (const auto& d : drones)
         {
-            auto waypoints = generateSweepWaypoints(subROI, d, ROIPolygonMinAreaRect);
-            qInfo() << "Drone" << d.id << "has" << waypoints.size() << "waypoints for sub-ROI.";
-            allWaypointsPerDrone.append(qMakePair(d, waypoints));
+            if (d.id == droneIdNum)
+            {
+                associatedDrone = d;
+                droneFound = true;
+                break;
+            }
         }
+
+        if (!droneFound)
+        {
+            qWarning() << "Drone with ID" << droneId << "not found in drone list, skipping sub-ROI.";
+            emit StatusMessageChanged(
+                tr("<font color='red'>[WARNING]: Drone ID %1 not found in drone list, skipping.</font>").arg(droneId));
+            continue;
+        }
+
+        // === FOOTPRINT VALIDATION (already in SI units - meters) ===
+        // All drone parameters are now in SI units from drones.json
+        // Footprint values should be reasonable for drone imagery (1m - 500m typical)
+        double footprintX_m = associatedDrone.max_x_footprint;
+        double footprintY_m = associatedDrone.max_y_footprint;
+
+        if (footprintX_m <= 0.0 || footprintY_m <= 0.0)
+        {
+            qCritical() << "Footprint values are zero or negative for drone" << associatedDrone.id;
+            emit StatusMessageChanged(
+                tr("<font color='red'>[CRITICAL]: Drone %1 has invalid footprint (X=%2m, Y=%3m)</font>")
+                    .arg(associatedDrone.id)
+                    .arg(footprintX_m, 0, 'f', 2)
+                    .arg(footprintY_m, 0, 'f', 2));
+            continue;
+        }
+
+        qInfo() << "Drone" << associatedDrone.id << "footprint (SI units):";
+        qInfo() << "  L_x:" << footprintX_m << "m";
+        qInfo() << "  L_y:" << footprintY_m << "m";
+
+        // Sanity check: footprint in meters should be reasonable (1m - 500m typical for drones)
+        if (footprintX_m < 1.0 || footprintX_m > 500.0 || footprintY_m < 1.0 || footprintY_m > 500.0)
+        {
+            qWarning() << "Warning: Footprint values seem unusual for drone" << associatedDrone.id;
+            qWarning() << "  Expected range: 1-500 meters, got X=" << footprintX_m << " Y=" << footprintY_m;
+            emit StatusMessageChanged(
+                tr("<font color='orange'>[WARNING]: Drone %1 footprint unusual (X=%2m, Y=%3m) - expected 1-500m</font>")
+                    .arg(associatedDrone.id)
+                    .arg(footprintX_m, 0, 'f', 1)
+                    .arg(footprintY_m, 0, 'f', 1));
+        }
+
+        // === COORDINATE SYSTEM VALIDATION before calling PathPlanner ===
+        if (!validateCoordinateSystemMatch(subROIWGS84, ROIPolygonMinAreaRect, "generateWaypointsPerDecomposedArea"))
+        {
+            emit StatusMessageChanged(tr("<font color='red'>[CRITICAL]: Coordinate system mismatch for drone %1 - "
+                                         "sub-ROI and MAR must both be WGS84</font>")
+                                          .arg(associatedDrone.id));
+            continue;
+        }
+
+        if (!validateFootprintMeters(footprintX_m, footprintY_m, "generateWaypointsPerDecomposedArea"))
+        {
+            emit StatusMessageChanged(
+                tr("<font color='red'>[CRITICAL]: Unit mismatch - footprint not in meters for drone %1</font>")
+                    .arg(associatedDrone.id));
+            continue;
+        }
+
+        // Generate waypoints using MAR-based sweep pattern
+        // All inputs are now in METERS / WGS84 projected coordinates
+        QList<QPointF> waypoints =
+            pathPlanner.computeWaypointsWithMAR(subROIWGS84, footprintX_m, footprintY_m, ROIPolygonMinAreaRect);
+
+        if (waypoints.isEmpty())
+        {
+            emit StatusMessageChanged(
+                tr("<font color='red'>[WARNING]: No waypoints generated for drone %1 - check input validation</font>")
+                    .arg(associatedDrone.id));
+        }
+        else
+        {
+            emit StatusMessageChanged(
+                tr("[INFO]: Drone %1 generated %2 waypoints").arg(associatedDrone.id).arg(waypoints.size()));
+        }
+
+        qInfo() << "Drone" << associatedDrone.id << "has" << waypoints.size() << "waypoints for sub-ROI";
+
+        allWaypointsPerDrone.append(qMakePair(associatedDrone, waypoints));
     }
+
+    emit StatusMessageChanged(QString("Generated waypoints for %1 sub-ROIs").arg(allWaypointsPerDrone.size()));
 }
 
 void
 ROIArea::showWaypoints()
 {
+    if (allWaypointsPerDrone.isEmpty())
+    {
+        qWarning() << "No waypoints to display. Run generateWaypointsPerDecomposedArea() first.";
+        emit StatusMessageChanged(tr("<font color='red'>[WARNING]: No waypoints to display. Run "
+                                     "generateWaypointsPerDecomposedArea() first.</font>"));
+        return;
+    }
+
     cleanToOpenImage();
     addOverlay(getOverlayStackTop().first, "Waypoints Overlay");
 
     QPainter painter(&getOverlayStackTop().first);
     if (!painter.isActive())
+    {
+        qWarning() << "Painter not active in showWaypoints";
+        emit StatusMessageChanged(
+            tr("<font color='red'>[CRITICAL]: Painter not active - cannot draw waypoints</font>"));
         return;
+    }
     painter.setRenderHint(QPainter::Antialiasing, true);
 
     QVector<QColor> colors = {Qt::red,  Qt::green,   Qt::blue,      Qt::magenta, Qt::yellow,
                               Qt::cyan, Qt::darkRed, Qt::darkGreen, Qt::darkBlue};
     int colorIdx = 0;
+    int totalWaypointsDrawn = 0;
 
-    for (const auto& pair : allWaypointsPerDrone)
+    for (const auto& dronePair : allWaypointsPerDrone)
     {
-        const drone& d = pair.first;
-        const QList<QPointF>& waypoints = pair.second;
+        const drone& d = dronePair.first;
+        const QList<QPointF>& waypoints = dronePair.second;
+
+        qInfo() << "Processing drone" << d.id << "with" << waypoints.size() << "waypoints";
+
+        if (waypoints.isEmpty())
+        {
+            qWarning() << "No waypoints for drone" << d.id;
+            emit StatusMessageChanged(tr("<font color='orange'>[WARNING]: No waypoints for drone %1</font>").arg(d.id));
+            colorIdx++;
+            continue;
+        }
+
         QColor color = colors[colorIdx % colors.size()];
         QPen pen(color);
         pen.setWidth(3);
         painter.setPen(pen);
         painter.setBrush(color);
 
-        // Draw waypoints as circles
-        for (const QPointF& pt : waypoints)
+        // Convert all waypoints from geo to pixel coordinates at once
+        QPolygonF geoWaypoints;
+        for (const QPointF& wp : waypoints)
+            geoWaypoints << wp;
+
+        // Validate waypoints are in WGS84 before conversion
+        if (!isPolygonWGS84(geoWaypoints))
         {
-            painter.drawEllipse(pt, 4, 4); // radius 4 pixels
+            qCritical() << "Waypoints for drone" << d.id << "are not in WGS84 coordinates!";
+            emit StatusMessageChanged(tr("<font color='red'>[CRITICAL]: Waypoints for drone %1 not in WGS84 - cannot "
+                                         "convert to pixels</font>")
+                                          .arg(d.id));
+            colorIdx++;
+            continue;
         }
 
-        // Draw drone ID near the first waypoint (if any)
-        if (!waypoints.isEmpty())
+        QPolygonF pixelWaypoints = gdalHandler.geoPolygonToPixels(geoWaypoints);
+
+        qInfo() << "Converted" << geoWaypoints.size() << "geo waypoints to" << pixelWaypoints.size()
+                << "pixel waypoints";
+
+        if (pixelWaypoints.isEmpty())
         {
-            QFont font = painter.font();
-            font.setPointSize(12);
-            font.setBold(true);
-            painter.setFont(font);
-            painter.setPen(Qt::white);
-            painter.drawText(waypoints.first() + QPointF(8, -8), QString::number(d.id));
+            qWarning() << "Pixel waypoints empty after conversion for drone" << d.id;
+            emit StatusMessageChanged(
+                tr("<font color='red'>[WARNING]: Conversion to pixels failed for drone %1</font>").arg(d.id));
+            // Debug: print first few geo waypoints
+            for (int i = 0; i < qMin(3, waypoints.size()); ++i)
+                qInfo() << "  Geo waypoint" << i << ":" << waypoints[i];
+            colorIdx++;
+            continue;
         }
 
+        // Debug: print first few pixel waypoints
+        for (int i = 0; i < qMin(3, pixelWaypoints.size()); ++i)
+            qInfo() << "  Pixel waypoint" << i << ":" << pixelWaypoints[i];
+
+        // Calculate dot radius - use 1 pixel for dense waypoint grids
+        // For very large images, cap at 2 pixels to remain visible
+        const QImage& overlayImage = getOverlayStackTop().first;
+        qreal imageMinDim = qMin(overlayImage.width(), overlayImage.height());
+        qreal dotRadius = qBound(0.5, imageMinDim * 0.0005, 2.0); // 0.05% of image, range [0.5, 2.0]
+
+        // Draw each waypoint as a tiny dot
+        for (const QPointF& pixelPt : pixelWaypoints)
+        {
+            painter.drawEllipse(pixelPt, dotRadius, dotRadius);
+        }
+
+        // Draw drone ID label near the first waypoint
+        QPointF labelPt = pixelWaypoints.first();
+        QFont font = painter.font();
+        font.setPointSize(14);
+        font.setBold(true);
+        painter.setFont(font);
+        painter.setPen(Qt::white);
+        painter.drawText(labelPt + QPointF(10, -10), QString("Drone %1 (%2 pts)").arg(d.id).arg(pixelWaypoints.size()));
+
+        totalWaypointsDrawn += pixelWaypoints.size();
+        qInfo() << "Drew" << pixelWaypoints.size() << "waypoints for drone" << d.id;
         colorIdx++;
     }
 
     painter.end();
     update();
+    emit StatusMessageChanged(QString("[INFO]: Displayed %1 waypoints for %2 drones")
+                                  .arg(totalWaypointsDrawn)
+                                  .arg(allWaypointsPerDrone.size()));
 }
