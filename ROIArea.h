@@ -122,6 +122,15 @@ class ROIArea : public QWidget
 
     void
     showWaypoints();
+
+    // Color analysis and contrast generation
+    QColor
+    analyzeBackgroundColor(const QImage& image, const QRectF& region = QRectF()) const;
+    QVector<QColor>
+    generateContrastingPalette(const QColor& backgroundColor, int numColors) const;
+    QColor
+    getContrastingTextColor(const QColor& backgroundColor) const;
+
   public slots:
     void
     clearImage();
@@ -186,6 +195,10 @@ class ROIArea : public QWidget
     bool panning = false;
     bool canDrawOnImage = false;
     QList<QPair<drone, QList<QPointF>>> allWaypointsPerDrone;
+
+    // Cached contrasting color palette based on background analysis
+    QVector<QColor> contrastingPalette;
+    QColor contrastingTextColor;
 };
 
 #endif
