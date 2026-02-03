@@ -13,8 +13,8 @@
 
 ROIArea::ROIArea(QWidget* parent) : QWidget(parent), grahamScanner(this), pathPlanner(this)
 {
-    this->setMinimumHeight(650);
-    this->setMinimumWidth(1000);
+    this->setMinimumHeight(WIDGET_MIN_HEIGHT);
+    this->setMinimumWidth(WIDGET_MIN_WIDTH);
 
     openImagePair = qMakePair(QImage(), QString());
     // 1. Create and store an initial empty base image
@@ -47,12 +47,12 @@ ROIArea::addOverlay(const QImage& baseImage, const QString& overlayLabel)
 
     painter.setPen(Qt::yellow);
     QFont font = painter.font();
-    font.setPointSize(14);
+    font.setPointSize(FONT_SIZE_LARGE);
     font.setBold(true);
     painter.setFont(font);
 
     const QString text = overlayLabel;
-    const int margin = 10;
+    const int margin = LABEL_MARGIN_LARGE;
     QRect rect = overlay.rect().adjusted(margin, margin, -margin, -margin);
     painter.drawText(rect, Qt::AlignTop | Qt::AlignRight, text);
 
@@ -291,7 +291,7 @@ ROIArea::mousePressEvent(QMouseEvent* event)
 void
 ROIArea::wheelEvent(QWheelEvent* event)
 {
-    constexpr qreal zoomStep = 1.001; // fine control
+    constexpr qreal zoomStep = ZOOM_STEP; // fine control
     if (panning)
     {
         QWidget::wheelEvent(event);
@@ -302,7 +302,7 @@ ROIArea::wheelEvent(QWheelEvent* event)
     else
         zoomFactor /= zoomStep;
 
-    zoomFactor = qBound<qreal>(0.1, zoomFactor, 20.0);
+    zoomFactor = qBound<qreal>(ZOOM_MIN, zoomFactor, ZOOM_MAX);
     update();
     QWidget::wheelEvent(event);
 }
@@ -386,9 +386,9 @@ ROIArea::drawPolygonOutline(const QPolygonF& polygon)
     QColor outlineColor = palette.isEmpty() ? Qt::red : palette[0];
 
     QPen pen(outlineColor);
-    pen.setWidthF(2.0 / zoomFactor);
+    pen.setWidthF(PEN_WIDTH_DEFAULT / zoomFactor);
     painter.setPen(pen);
-    QBrush brush(QColor(outlineColor.red(), outlineColor.green(), outlineColor.blue(), 80));
+    QBrush brush(QColor(outlineColor.red(), outlineColor.green(), outlineColor.blue(), ALPHA_ROI_OUTLINE));
     painter.setBrush(brush);
 
     painter.drawPolygon(toDrawPolygon); // image coords
@@ -830,7 +830,7 @@ ROIArea::drawGeoPolygonOnImage(QImage* img, const QList<QPointF>& geoPts)
 
     p.setRenderHint(QPainter::Antialiasing, true);
     QPen pen(Qt::green);
-    pen.setWidth(4);
+    pen.setWidth(PEN_WIDTH_THICK);
     p.setPen(pen);
     p.setBrush(Qt::NoBrush);
     p.drawPolygon(pixPoly);
@@ -918,7 +918,7 @@ ROIArea::drawMinimumAreaRectangle()
 
     QPen pen;
     pen.setColor(marColor);
-    pen.setWidthF(2.0 / zoomFactor); // keep thickness with zoom
+    pen.setWidthF(PEN_WIDTH_DEFAULT / zoomFactor); // keep thickness with zoom
     overlayPainter.setPen(pen);
     overlayPainter.setBrush(Qt::NoBrush);
     overlayPainter.setRenderHint(QPainter::Antialiasing, true);
@@ -1071,12 +1071,12 @@ ROIArea::showDecomposedROI()
     {
         QColor color = contrastingPalette[colorIdx % contrastingPalette.size()];
         QPen pen(color);
-        pen.setWidth(3);
+        pen.setWidth(PEN_WIDTH_MEDIUM);
         painter.setPen(pen);
 
         // Semi-transparent fill to differentiate sub-ROIs
         QColor fillColor = color;
-        fillColor.setAlpha(50); // 50/255 ≈ 20% opacity
+        fillColor.setAlpha(ALPHA_SUBROI_FILL); // 50/255 ≈ 20% opacity
         painter.setBrush(fillColor);
 
         // Convert polygon to pixel space
@@ -1107,7 +1107,7 @@ ROIArea::showDecomposedROI()
             centroid /= pixelSpacePolygon.size();
 
         QFont font = painter.font();
-        font.setPointSize(14);
+        font.setPointSize(FONT_SIZE_LARGE);
         font.setBold(true);
         painter.setFont(font);
 
@@ -1128,10 +1128,10 @@ ROIArea::showDecomposedROI()
         }
 
         // Try multiple label positions OUTSIDE the sub-ROI, picking first one that fits in image
-        const qreal margin = 5.0;
+        const qreal margin = LABEL_MARGIN_SMALL;
         const int imgW = overlayImage.width();
         const int imgH = overlayImage.height();
-        const qreal labelRotation = -30.0; // Rotate labels to angle away from waypoints
+        const qreal labelRotation = LABEL_ROTATION_DEG; // Rotate labels to angle away from waypoints
 
         // Positions outside the sub-ROI bounding box
         QVector<QPointF> candidatePositions = {
@@ -1216,7 +1216,7 @@ ROIArea::showDecomposedROI()
 
         // Draw background rect at rotated position
         painter.setPen(Qt::NoPen);
-        painter.setBrush(QColor(bgColor.red(), bgColor.green(), bgColor.blue(), 180));
+        painter.setBrush(QColor(bgColor.red(), bgColor.green(), bgColor.blue(), ALPHA_LABEL_BG));
         painter.drawRect(QRectF(-2, -textHeight, textWidth + 4, textHeight + 4));
 
         // Draw text
@@ -1501,7 +1501,7 @@ ROIArea::showWaypoints()
 
         QColor color = contrastingPalette[colorIdx % contrastingPalette.size()];
         QPen pen(color);
-        pen.setWidth(3);
+        pen.setWidth(PEN_WIDTH_MEDIUM);
         painter.setPen(pen);
         painter.setBrush(color);
 
@@ -1545,11 +1545,12 @@ ROIArea::showWaypoints()
         // Calculate dot radius - use 1 pixel for dense waypoint grids
         // For very large images, cap at 2 pixels to remain visible
         qreal imageMinDim = qMin(overlayImage.width(), overlayImage.height());
-        qreal dotRadius = qBound(0.5, imageMinDim * 0.0005, 2.0); // 0.05% of image, range [0.5, 2.0]
+        qreal dotRadius =
+            qBound(DOT_RADIUS_MIN, imageMinDim * DOT_RADIUS_SCALE, DOT_RADIUS_MAX); // 0.05% of image, range [0.5, 2.0]
 
         // Draw lines connecting consecutive waypoints (w_1 -> w_2 -> ... -> w_n)
         QPen linePen(color);
-        linePen.setWidthF(qMax(0.5, dotRadius * 0.5)); // Line thinner than dots
+        linePen.setWidthF(qMax(DOT_RADIUS_MIN, dotRadius * 0.5)); // Line thinner than dots
         painter.setPen(linePen);
         painter.setBrush(Qt::NoBrush);
         for (int i = 0; i < pixelWaypoints.size() - 1; ++i)
@@ -1578,7 +1579,7 @@ ROIArea::showWaypoints()
 
         // Position label OUTSIDE the sub-ROI bounding box, within image bounds
         QFont font = painter.font();
-        font.setPointSize(12);
+        font.setPointSize(FONT_SIZE_SMALL);
         font.setBold(true);
         painter.setFont(font);
 
@@ -1587,8 +1588,8 @@ ROIArea::showWaypoints()
         int textWidth = fm.horizontalAdvance(labelText);
         int textHeight = fm.height();
 
-        const qreal margin = 5.0;
-        const qreal labelRotation = -30.0; // Rotate labels to angle away from waypoints
+        const qreal margin = LABEL_MARGIN_SMALL;
+        const qreal labelRotation = LABEL_ROTATION_DEG; // Rotate labels to angle away from waypoints
         const int imgW = overlayImage.width();
         const int imgH = overlayImage.height();
 
@@ -1675,7 +1676,7 @@ ROIArea::showWaypoints()
 
         // Draw background rect at rotated position
         painter.setPen(Qt::NoPen);
-        painter.setBrush(QColor(bgColor.red(), bgColor.green(), bgColor.blue(), 180));
+        painter.setBrush(QColor(bgColor.red(), bgColor.green(), bgColor.blue(), ALPHA_LABEL_BG));
         painter.drawRect(QRectF(-2, -textHeight, textWidth + 4, textHeight + 4));
 
         // Draw text
@@ -1764,28 +1765,28 @@ ROIArea::generateContrastingPalette(const QColor& backgroundColor, int numColors
     // For very light backgrounds, use darker saturated colors
     if (bgLuminance > 0.7)
     {
-        targetValue = 180;
+        targetValue = ALPHA_LABEL_BG;
         targetSaturation = 255;
     }
 
     // Generate colors evenly distributed around the color wheel
     // Offset from background hue to avoid similar colors
-    int hueOffset = (bgHue + 180) % 360; // Start opposite to background
+    int hueOffset = (bgHue + HUE_OPPOSITE) % HUE_FULL_CIRCLE; // Start opposite to background
 
     for (int i = 0; i < numColors; ++i)
     {
         // Distribute hues evenly, starting from opposite of background
-        int hue = (hueOffset + (i * 360) / numColors) % 360;
+        int hue = (hueOffset + (i * HUE_FULL_CIRCLE) / numColors) % HUE_FULL_CIRCLE;
 
         // Avoid hues too close to the background hue (within 30 degrees)
         if (bgSat > 50) // Only if background has significant saturation
         {
             int hueDiff = qAbs(hue - bgHue);
-            if (hueDiff > 180)
-                hueDiff = 360 - hueDiff;
+            if (hueDiff > HUE_OPPOSITE)
+                hueDiff = HUE_FULL_CIRCLE - hueDiff;
             if (hueDiff < 30)
             {
-                hue = (hue + 60) % 360; // Shift away from background
+                hue = (hue + HUE_SHIFT_AMOUNT) % HUE_FULL_CIRCLE; // Shift away from background
             }
         }
 

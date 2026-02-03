@@ -1,4 +1,5 @@
 #include "pathplanner.h"
+#include "utils.h"
 #include <QFile>
 #include <QIODevice>
 #include <QList>
@@ -226,7 +227,7 @@ PathPlanner::binary_search(double cap, QTransform& EF, const QTransform& AD, con
         double pivot = ivec[m];
         double area = compute_partitioned_area(pivot, EF, AD, BC, target, marHeight);
         double diff = cap - area;
-        if (std::abs(diff) < 1e-8)
+        if (std::abs(diff) < EPSILON_SMALL)
         {
             return pivot;
         }
@@ -288,7 +289,7 @@ PathPlanner::suth_hodgman_polygon_clipper(QPolygonF& divider_poly, QPolygonF& ta
         double c2 = a2 * q1.x() + b2 * q1.y();
 
         double det = a1 * b2 - a2 * b1;
-        if (std::fabs(det) < 1e-12)
+        if (std::fabs(det) < EPSILON_TINY)
             return p2; // Lines are parallel, return p2 as fallback
 
         double x = (b2 * c1 - b1 * c2) / det;
@@ -411,7 +412,7 @@ PathPlanner::decomposedROI(QPolygonF& roi, QList<drone>& droneList, const Rotate
             QPolygonF divider = makeRectPoly(mar, start, mid);
             QPolygonF clipped = suth_hodgman_polygon_clipper(divider, roi);
             double area = calculatePolygonArea(clipped);
-            if (area < (targetArea - 1e-8))
+            if (area < (targetArea - EPSILON_SMALL))
                 left = mid;
             else
                 right = mid;
@@ -821,7 +822,7 @@ PathPlanner::computeWaypointsWithMAR(const QPolygonF& area, double max_x_footpri
     }
 
     // Validate MAR dimensions are reasonable for meters
-    if (mar.width > 100000 || mar.height > 100000)
+    if (mar.width > MAR_SIZE_MAX || mar.height > MAR_SIZE_MAX)
     {
         qWarning() << "Warning: MAR dimensions seem very large (width=" << mar.width << ", height=" << mar.height
                    << "). Verify units are in meters.";

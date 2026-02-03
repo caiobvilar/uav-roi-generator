@@ -16,6 +16,51 @@
 #define FORWARD_OVERLAP 0.2 // Forward overlap ratio (20%) - spacing = footprint * 0.8
 #define SIDE_OVERLAP 0.25   // Side overlap ratio (25%) - spacing = footprint * 0.75
 
+// === WIDGET DIMENSIONS ===
+#define WIDGET_MIN_HEIGHT 650 // Minimum widget height in pixels
+#define WIDGET_MIN_WIDTH 1000 // Minimum widget width in pixels
+
+// === FONT SIZES ===
+#define FONT_SIZE_SMALL 12 // Small font point size for labels
+#define FONT_SIZE_LARGE 14 // Large font point size for titles
+
+// === PEN WIDTHS ===
+#define PEN_WIDTH_DEFAULT 2.0 // Default pen width for lines
+#define PEN_WIDTH_MEDIUM 3    // Medium pen width for outlines
+#define PEN_WIDTH_THICK 4     // Thick pen width for emphasis
+
+// === ALPHA/TRANSPARENCY VALUES ===
+#define ALPHA_SUBROI_FILL 50 // Alpha for sub-ROI fill (50/255 ≈ 20% opacity)
+#define ALPHA_ROI_OUTLINE 80 // Alpha for ROI outline brush
+#define ALPHA_LABEL_BG 180   // Alpha for label background
+
+// === ZOOM PARAMETERS ===
+#define ZOOM_STEP 1.001 // Zoom step multiplier for fine control
+#define ZOOM_MIN 0.1    // Minimum zoom factor
+#define ZOOM_MAX 20.0   // Maximum zoom factor
+
+// === LABEL RENDERING ===
+#define LABEL_ROTATION_DEG -30.0 // Label rotation in degrees
+#define LABEL_MARGIN_SMALL 5.0   // Small margin for label positioning
+#define LABEL_MARGIN_LARGE 10    // Large margin for label positioning
+
+// === WAYPOINT DOT RENDERING ===
+#define DOT_RADIUS_MIN 0.5      // Minimum dot radius in pixels
+#define DOT_RADIUS_MAX 2.0      // Maximum dot radius in pixels
+#define DOT_RADIUS_SCALE 0.0005 // Scale factor for dot radius (0.05% of image)
+
+// === EPSILON VALUES FOR FLOATING-POINT COMPARISONS ===
+#define EPSILON_SMALL 1e-8 // Small epsilon for comparisons
+#define EPSILON_TINY 1e-12 // Tiny epsilon for determinant checks
+
+// === COLOR CONSTANTS ===
+#define HUE_FULL_CIRCLE 360 // Full hue circle in degrees
+#define HUE_OPPOSITE 180    // Opposite hue offset
+#define HUE_SHIFT_AMOUNT 60 // Amount to shift hue to avoid background
+
+// === VALIDATION THRESHOLDS ===
+#define MAR_SIZE_MAX 100000 // Maximum MAR dimension for validation
+
 struct PathSegment
 {
     double cumulativeDistance = 0.0; // Cumulative distance at this segment
