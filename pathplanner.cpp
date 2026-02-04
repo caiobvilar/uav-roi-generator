@@ -124,11 +124,29 @@ PathPlanner::calcMaximumForwardVelocity(QList<drone>& droneList)
 {
     for (auto& d : droneList)
     {
-        // V_max = L_y * (1 - O_f) / s_h
-        d.max_forward_velocity = (d.max_y_footprint * (1.0 - FORWARD_OVERLAP)) / d.camera_shutter_speed;
+        // Calculate GSD (Ground Sample Distance) in the flight direction
+        // GSD_y = L_y / image_height
+        double gsd_y = d.max_y_footprint / d.camera_image_height;
 
+        // Motion blur constraint: drone movement during exposure should be less than 1 GSD
+        // V_max_blur = GSD_y / shutter_speed
+        double maxVelocityBlur = gsd_y / d.camera_shutter_speed;
+
+        // Overlap constraint: velocity to maintain forward overlap
+        // V_max_overlap = L_y * (1 - O_f) / frame_interval
+        // For now, we use the motion blur constraint as primary
+        double calculatedVelocity = maxVelocityBlur;
+
+        // Cap at drone's physical maximum horizontal velocity
+        d.max_forward_velocity = qMin(calculatedVelocity, d.max_horizontal_velocity);
+
+        qDebug() << "Drone" << d.name << "- GSD (y):" << gsd_y * 100.0 << "cm/px";
         qDebug() << "Drone" << d.name << "- Maximum forward velocity:" << d.max_forward_velocity << "m/s";
-        qDebug() << "  (with" << (FORWARD_OVERLAP * 100) << "% forward overlap)";
+        if (calculatedVelocity > d.max_horizontal_velocity)
+        {
+            qDebug() << "  (capped from" << calculatedVelocity << "m/s to drone's max" << d.max_horizontal_velocity
+                     << "m/s)";
+        }
     }
 }
 
