@@ -30,8 +30,6 @@ class PathPlanner : public QObject
     decomposedROI(QPolygonF& roi, QList<drone>& droneList, const RotatedRect& mar);
     double
     calculatePolygonArea(const QPolygonF& polygon);
-    double
-    binary_search(double relative_cap, QPolygonF pol);
 
     QPolygonF
     suth_hodgman_polygon_clipper(QPolygonF& divider_poly, QPolygonF& target_poly);
