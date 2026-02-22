@@ -13,8 +13,8 @@
 
 ROIArea::ROIArea(QWidget* parent) : QWidget(parent), grahamScanner(this), pathPlanner(this)
 {
-    this->setMinimumHeight(650);
-    this->setMinimumWidth(1000);
+    this->setMinimumHeight(WIDGET_MIN_HEIGHT);
+    this->setMinimumWidth(WIDGET_MIN_WIDTH);
 
     openImagePair = qMakePair(QImage(), QString());
     // 1. Create and store an initial empty base image
@@ -47,12 +47,12 @@ ROIArea::addOverlay(const QImage& baseImage, const QString& overlayLabel)
 
     painter.setPen(Qt::yellow);
     QFont font = painter.font();
-    font.setPointSize(14);
+    font.setPointSize(FONT_SIZE_LARGE);
     font.setBold(true);
     painter.setFont(font);
 
     const QString text = overlayLabel;
-    const int margin = 10;
+    const int margin = LABEL_MARGIN_LARGE;
     QRect rect = overlay.rect().adjusted(margin, margin, -margin, -margin);
     painter.drawText(rect, Qt::AlignTop | Qt::AlignRight, text);
 
@@ -291,7 +291,7 @@ ROIArea::mousePressEvent(QMouseEvent* event)
 void
 ROIArea::wheelEvent(QWheelEvent* event)
 {
-    constexpr qreal zoomStep = 1.001; // fine control
+    constexpr qreal zoomStep = ZOOM_STEP; // fine control
     if (panning)
     {
         QWidget::wheelEvent(event);
@@ -302,7 +302,7 @@ ROIArea::wheelEvent(QWheelEvent* event)
     else
         zoomFactor /= zoomStep;
 
-    zoomFactor = qBound<qreal>(0.1, zoomFactor, 20.0);
+    zoomFactor = qBound<qreal>(ZOOM_MIN, zoomFactor, ZOOM_MAX);
     update();
     QWidget::wheelEvent(event);
 }
@@ -379,10 +379,16 @@ ROIArea::drawPolygonOutline(const QPolygonF& polygon)
         return;
     painter.setRenderHint(QPainter::Antialiasing);
 
-    QPen pen(Qt::red);
-    pen.setWidthF(2.0 / zoomFactor);
+    // Analyze background color within the polygon's bounding box
+    QRectF polyBounds = toDrawPolygon.boundingRect();
+    QColor bgColor = analyzeBackgroundColor(image, polyBounds);
+    QVector<QColor> palette = generateContrastingPalette(bgColor, 1);
+    QColor outlineColor = palette.isEmpty() ? Qt::red : palette[0];
+
+    QPen pen(outlineColor);
+    pen.setWidthF(PEN_WIDTH_DEFAULT / zoomFactor);
     painter.setPen(pen);
-    QBrush brush(QColor(255, 0, 0, 80));
+    QBrush brush(QColor(outlineColor.red(), outlineColor.green(), outlineColor.blue(), ALPHA_ROI_OUTLINE));
     painter.setBrush(brush);
 
     painter.drawPolygon(toDrawPolygon); // image coords
@@ -824,7 +830,7 @@ ROIArea::drawGeoPolygonOnImage(QImage* img, const QList<QPointF>& geoPts)
 
     p.setRenderHint(QPainter::Antialiasing, true);
     QPen pen(Qt::green);
-    pen.setWidth(4);
+    pen.setWidth(PEN_WIDTH_THICK);
     p.setPen(pen);
     p.setBrush(Qt::NoBrush);
     p.drawPolygon(pixPoly);
@@ -868,7 +874,27 @@ ROIArea::calculateMinimumAreaRectangle()
         }
     }
 
-    ROIPolygonMinAreaRect = minimumAreaRectangle(hull); // image coords
+    // Compute MAR in WGS84/projected coordinates (meters)
+    // The hull is already in geo coordinates from polygonToGeo() above
+    ROIPolygonMinAreaRect = minimumAreaRectangle(hull);
+
+    // Validate result is in WGS84
+    if (!isRotatedRectWGS84(ROIPolygonMinAreaRect))
+    {
+        qWarning() << "Warning: MAR origin doesn't look like WGS84 coordinates:" << ROIPolygonMinAreaRect.origin;
+        emit StatusMessageChanged(tr("<font color='red'>[WARNING]: MAR origin doesn't look like WGS84 coordinates - "
+                                     "check input polygon</font>"));
+    }
+    else
+    {
+        qInfo() << "MAR computed in WGS84 coordinates:";
+        qInfo() << "  Origin:" << ROIPolygonMinAreaRect.origin;
+        qInfo() << "  Dimensions (m): width=" << ROIPolygonMinAreaRect.width
+                << " height=" << ROIPolygonMinAreaRect.height;
+        emit StatusMessageChanged(tr("[INFO]: MAR computed in WGS84 - width=%1m, height=%2m")
+                                      .arg(ROIPolygonMinAreaRect.width, 0, 'f', 2)
+                                      .arg(ROIPolygonMinAreaRect.height, 0, 'f', 2));
+    }
 }
 
 void
@@ -884,9 +910,15 @@ ROIArea::drawMinimumAreaRectangle()
     if (!overlayPainter.isActive())
         return;
 
+    // Analyze background color within the MAR region
+    QRectF marBounds = box.boundingRect();
+    QColor bgColor = analyzeBackgroundColor(overlayImage, marBounds);
+    QVector<QColor> palette = generateContrastingPalette(bgColor, 1);
+    QColor marColor = palette.isEmpty() ? Qt::yellow : palette[0];
+
     QPen pen;
-    pen.setColor(Qt::yellow);
-    pen.setWidthF(2.0 / zoomFactor); // keep thickness with zoom
+    pen.setColor(marColor);
+    pen.setWidthF(PEN_WIDTH_DEFAULT / zoomFactor); // keep thickness with zoom
     overlayPainter.setPen(pen);
     overlayPainter.setBrush(Qt::NoBrush);
     overlayPainter.setRenderHint(QPainter::Antialiasing, true);
@@ -1012,7 +1044,9 @@ ROIArea::showDecomposedROI()
     QList<QPair<QPolygonF, QString>> decomposed = pathPlanner.getDecomposedROIs();
     cleanToOpenImage();
     addOverlay(getOverlayStackTop().first, "ROI Decomposition");
-    QPainter painter(&getOverlayStackTop().first);
+
+    QImage& overlayImage = getOverlayStackTop().first;
+    QPainter painter(&overlayImage);
     if (!painter.isActive())
     {
         qInfo() << "drawGeoPolygonOnImage: painter not active";
@@ -1020,64 +1054,176 @@ ROIArea::showDecomposedROI()
     }
 
     painter.setRenderHint(QPainter::Antialiasing, true);
-    QVector<QColor> colors = {Qt::green,
-                              Qt::blue,
-                              Qt::cyan,
-                              Qt::magenta,
-                              Qt::yellow,
-                              Qt::gray,
-                              Qt::darkGreen,
-                              Qt::darkBlue,
-                              Qt::darkCyan,
-                              Qt::darkMagenta,
-                              QColor(255, 165, 0),
-                              QColor(128, 0, 128),
-                              QColor(0, 128, 128),
-                              QColor(128, 128, 0),
-                              QColor(0, 255, 127),
-                              QColor(70, 130, 180)};
+
+    // Analyze background and generate contrasting palette
+    QColor bgColor = analyzeBackgroundColor(overlayImage);
+    contrastingPalette = generateContrastingPalette(bgColor, qMax(decomposed.size(), 16));
+    contrastingTextColor = getContrastingTextColor(bgColor);
+
+    qInfo() << "Background color analyzed:" << bgColor.name() << "Generated" << contrastingPalette.size()
+            << "contrasting colors";
+
+    // Track placed label rectangles to avoid overlap
+    QList<QRectF> placedLabels;
 
     int colorIdx = 0;
     for (const auto& polyPair : decomposed)
     {
-        QPen pen(colors[colorIdx % colors.size()]);
-        pen.setWidth(3);
+        QColor color = contrastingPalette[colorIdx % contrastingPalette.size()];
+        QPen pen(color);
+        pen.setWidth(PEN_WIDTH_MEDIUM);
         painter.setPen(pen);
-        painter.setBrush(Qt::NoBrush);
+
+        // Semi-transparent fill to differentiate sub-ROIs
+        QColor fillColor = color;
+        fillColor.setAlpha(ALPHA_SUBROI_FILL); // 50/255 ≈ 20% opacity
+        painter.setBrush(fillColor);
+
+        // Convert polygon to pixel space
         if (isPolygonWGS84(polyPair.first))
         {
-            emit StatusMessageChanged(tr("[ERROR]: Polygon was in WGS84 Space | Converted to Pixel Space"));
             pixelSpacePolygon = gdalHandler.geoPolygonToPixels(polyPair.first);
-            qInfo() << "[ERROR]: Polygon was in WGS84 Space | Converted to Pixel Space.";
-            // Pixel-space message: show all four corners
-            QStringList pts;
-            for (const QPointF& pt : pixelSpacePolygon)
-                pts << QString("(%1, %2)").arg(pt.x(), 0, 'f', 1).arg(pt.y(), 0, 'f', 1);
-            QString msgPix = QString("polPyPair.first[PIXELS]: %1").arg(pts.join(", "));
-            qInfo() << msgPix;
-            emit StatusMessageChanged(msgPix);
+            qInfo() << "[INFO]: Sub-ROI polygon converted from WGS84 to Pixel Space.";
         }
         else
         {
-
-            emit StatusMessageChanged(tr("[DEBUG]: Polygon is in Pixel Space | Nothing done"));
-            qInfo() << "[Debug]: Polygon was in pixel Space | Nothing done to it.";
+            pixelSpacePolygon = polyPair.first;
+            qInfo() << "[INFO]: Sub-ROI polygon already in Pixel Space.";
         }
+
+        // Remove duplicate closing point if present (Qt drawPolygon auto-closes)
+        if (pixelSpacePolygon.size() >= 2 && pixelSpacePolygon.first() == pixelSpacePolygon.last())
+        {
+            pixelSpacePolygon.removeLast();
+        }
+
         painter.drawPolygon(pixelSpacePolygon);
 
-        // Draw Drone ID near the centroid of the polygon
+        // Draw Drone ID near the centroid of the polygon with background
         QPointF centroid(0, 0);
-        for (const QPointF& pt : polyPair.first)
+        for (const QPointF& pt : pixelSpacePolygon)
             centroid += pt;
-        if (!polyPair.first.isEmpty())
-            centroid /= polyPair.first.size();
+        if (!pixelSpacePolygon.isEmpty())
+            centroid /= pixelSpacePolygon.size();
 
         QFont font = painter.font();
-        font.setPointSize(14);
+        font.setPointSize(FONT_SIZE_LARGE);
         font.setBold(true);
         painter.setFont(font);
-        painter.setPen(Qt::white);
-        painter.drawText(centroid, polyPair.second);
+
+        QString labelText = polyPair.second;
+        QFontMetrics fm(font);
+        int textWidth = fm.horizontalAdvance(labelText);
+        int textHeight = fm.height();
+
+        // Calculate bounding box of the sub-ROI
+        qreal roiMinX = pixelSpacePolygon.first().x(), roiMaxX = roiMinX;
+        qreal roiMinY = pixelSpacePolygon.first().y(), roiMaxY = roiMinY;
+        for (const QPointF& pt : pixelSpacePolygon)
+        {
+            roiMinX = qMin(roiMinX, pt.x());
+            roiMaxX = qMax(roiMaxX, pt.x());
+            roiMinY = qMin(roiMinY, pt.y());
+            roiMaxY = qMax(roiMaxY, pt.y());
+        }
+
+        // Try multiple label positions OUTSIDE the sub-ROI, picking first one that fits in image
+        const qreal margin = LABEL_MARGIN_SMALL;
+        const int imgW = overlayImage.width();
+        const int imgH = overlayImage.height();
+        const qreal labelRotation = LABEL_ROTATION_DEG; // Rotate labels to angle away from waypoints
+
+        // Positions outside the sub-ROI bounding box
+        QVector<QPointF> candidatePositions = {
+            QPointF(roiMinX - margin, roiMinY - margin),                 // Above top-left (outside)
+            QPointF(roiMaxX + margin, roiMinY - margin),                 // Above top-right (outside)
+            QPointF(roiMinX - textWidth - margin, roiMinY + textHeight), // Left of top-left (outside)
+            QPointF(roiMaxX + margin, roiMaxY),                          // Right of bottom-right (outside)
+        };
+
+        // Lambda to check if a label rect overlaps with any placed label
+        auto overlapsPlacedLabels = [&](const QRectF& rect) -> bool {
+            for (const QRectF& placed : placedLabels)
+            {
+                if (rect.intersects(placed))
+                    return true;
+            }
+            return false;
+        };
+
+        // Lambda to check if position is valid (within bounds and no overlap)
+        auto isValidPosition = [&](const QPointF& pt) -> bool {
+            QRectF labelRect(pt.x() - 2, pt.y() - textHeight, textWidth + 4, textHeight + 4);
+            return pt.x() >= 0 && pt.x() + textWidth <= imgW && pt.y() - textHeight >= 0 && pt.y() <= imgH &&
+                   !overlapsPlacedLabels(labelRect);
+        };
+
+        QPointF labelPt = candidatePositions[colorIdx % candidatePositions.size()];
+        bool foundValidPosition = false;
+
+        // First pass: try all candidate positions
+        for (const QPointF& candidate : candidatePositions)
+        {
+            if (isValidPosition(candidate))
+            {
+                labelPt = candidate;
+                foundValidPosition = true;
+                break;
+            }
+        }
+
+        // Second pass: if no valid position, try vertical offsets to avoid overlap
+        if (!foundValidPosition)
+        {
+            for (const QPointF& candidate : candidatePositions)
+            {
+                // Try shifting up/down in increments of textHeight
+                for (int yOffset = 0; yOffset <= imgH; yOffset += textHeight + 5)
+                {
+                    QPointF shifted = candidate + QPointF(0, yOffset);
+                    if (isValidPosition(shifted))
+                    {
+                        labelPt = shifted;
+                        foundValidPosition = true;
+                        break;
+                    }
+                    // Also try shifting up
+                    shifted = candidate - QPointF(0, yOffset);
+                    if (isValidPosition(shifted))
+                    {
+                        labelPt = shifted;
+                        foundValidPosition = true;
+                        break;
+                    }
+                }
+                if (foundValidPosition)
+                    break;
+            }
+        }
+
+        // Final clamp to ensure label stays within image bounds
+        labelPt.setX(qBound(2.0, labelPt.x(), qreal(imgW - textWidth - 2)));
+        labelPt.setY(qBound(qreal(textHeight + 2), labelPt.y(), qreal(imgH - 2)));
+
+        // Record this label's bounding rect (approximate for rotated text)
+        QRectF labelRect(labelPt.x() - 2, labelPt.y() - textHeight - 2, textWidth + 4, textHeight + 4);
+        placedLabels.append(labelRect);
+
+        // Draw rotated label with background for visibility
+        painter.save();
+        painter.translate(labelPt);
+        painter.rotate(labelRotation);
+
+        // Draw background rect at rotated position
+        painter.setPen(Qt::NoPen);
+        painter.setBrush(QColor(bgColor.red(), bgColor.green(), bgColor.blue(), ALPHA_LABEL_BG));
+        painter.drawRect(QRectF(-2, -textHeight, textWidth + 4, textHeight + 4));
+
+        // Draw text
+        painter.setPen(color);
+        painter.drawText(QPointF(0, 0), labelText);
+
+        painter.restore();
 
         colorIdx++;
     }
@@ -1139,68 +1285,547 @@ ROIArea::generateWaypointsPerDecomposedArea()
 {
     auto decomposedPairs = pathPlanner.getDecomposedROIs();
     if (decomposedPairs.isEmpty())
+    {
+        qWarning() << "No decomposed ROIs available for waypoint generation.";
+        emit StatusMessageChanged(
+            tr("<font color='red'>[WARNING]: No decomposed ROIs available for waypoint generation.</font>"));
         return;
+    }
 
     auto drones = pathPlanner.getDroneList();
     if (drones.isEmpty())
+    {
+        qWarning() << "No drones available for waypoint generation.";
+        emit StatusMessageChanged(
+            tr("<font color='red'>[WARNING]: No drones available for waypoint generation.</font>"));
         return;
+    }
+
+    // === VALIDATE MAR IS IN WGS84 COORDINATES ===
+    if (!isRotatedRectWGS84(ROIPolygonMinAreaRect))
+    {
+        qCritical() << "ERROR: ROIPolygonMinAreaRect is not in WGS84 coordinates!";
+        qCritical() << "  Origin:" << ROIPolygonMinAreaRect.origin;
+        qCritical() << "  Call calculateMinimumAreaRectangle() first with a geo-converted polygon.";
+        emit StatusMessageChanged(tr("<font color='red'>[CRITICAL]: MAR not in WGS84 coordinates! Call "
+                                     "calculateMinimumAreaRectangle() first.</font>"));
+        return;
+    }
+
+    allWaypointsPerDrone.clear();
+
     for (const auto& pair : decomposedPairs)
     {
-        const auto& subROI = pair.first;
+        const QPolygonF& subROI = pair.first;
+        const QString& droneId = pair.second;
+
+        if (subROI.size() < 3)
+        {
+            qWarning() << "Sub-ROI for drone" << droneId << "has less than 3 vertices, skipping.";
+            emit StatusMessageChanged(
+                tr("<font color='red'>[WARNING]: Sub-ROI for drone %1 has &lt;3 vertices, skipping.</font>")
+                    .arg(droneId));
+            continue;
+        }
+
+        // Ensure polygon is in geo coordinates (WGS84)
+        QPolygonF subROIWGS84 = subROI;
+        if (!isPolygonWGS84(subROI))
+        {
+            qInfo() << "Converting sub-ROI from pixel to WGS84 for drone" << droneId;
+            emit StatusMessageChanged(tr("[INFO]: Converting sub-ROI to WGS84 coordinates for drone %1").arg(droneId));
+            subROIWGS84 = gdalHandler.polygonToGeo(subROI);
+
+            // Verify conversion succeeded
+            if (!isPolygonWGS84(subROIWGS84))
+            {
+                qCritical() << "ERROR: Failed to convert sub-ROI to WGS84 for drone" << droneId;
+                emit StatusMessageChanged(
+                    tr("<font color='red'>[CRITICAL]: Failed to convert sub-ROI to WGS84 for drone %1</font>")
+                        .arg(droneId));
+                continue;
+            }
+        }
+
+        // Find the drone associated with this sub-ROI
+        drone associatedDrone;
+        bool droneFound = false;
+        uint32_t droneIdNum = droneId.toUInt();
         for (const auto& d : drones)
         {
-            auto waypoints = generateSweepWaypoints(subROI, d, ROIPolygonMinAreaRect);
-            qInfo() << "Drone" << d.id << "has" << waypoints.size() << "waypoints for sub-ROI.";
-            allWaypointsPerDrone.append(qMakePair(d, waypoints));
+            if (d.id == droneIdNum)
+            {
+                associatedDrone = d;
+                droneFound = true;
+                break;
+            }
         }
+
+        if (!droneFound)
+        {
+            qWarning() << "Drone with ID" << droneId << "not found in drone list, skipping sub-ROI.";
+            emit StatusMessageChanged(
+                tr("<font color='red'>[WARNING]: Drone ID %1 not found in drone list, skipping.</font>").arg(droneId));
+            continue;
+        }
+
+        // === FOOTPRINT VALIDATION (already in SI units - meters) ===
+        // All drone parameters are now in SI units from drones.json
+        // Footprint values should be reasonable for drone imagery (1m - 500m typical)
+        double footprintX_m = associatedDrone.max_x_footprint;
+        double footprintY_m = associatedDrone.max_y_footprint;
+
+        if (footprintX_m <= 0.0 || footprintY_m <= 0.0)
+        {
+            qCritical() << "Footprint values are zero or negative for drone" << associatedDrone.id;
+            emit StatusMessageChanged(
+                tr("<font color='red'>[CRITICAL]: Drone %1 has invalid footprint (X=%2m, Y=%3m)</font>")
+                    .arg(associatedDrone.id)
+                    .arg(footprintX_m, 0, 'f', 2)
+                    .arg(footprintY_m, 0, 'f', 2));
+            continue;
+        }
+
+        qInfo() << "Drone" << associatedDrone.id << "footprint (SI units):";
+        qInfo() << "  L_x:" << footprintX_m << "m";
+        qInfo() << "  L_y:" << footprintY_m << "m";
+
+        // Sanity check: footprint in meters should be reasonable (1m - 500m typical for drones)
+        if (footprintX_m < 1.0 || footprintX_m > 500.0 || footprintY_m < 1.0 || footprintY_m > 500.0)
+        {
+            qWarning() << "Warning: Footprint values seem unusual for drone" << associatedDrone.id;
+            qWarning() << "  Expected range: 1-500 meters, got X=" << footprintX_m << " Y=" << footprintY_m;
+            emit StatusMessageChanged(
+                tr("<font color='orange'>[WARNING]: Drone %1 footprint unusual (X=%2m, Y=%3m) - expected 1-500m</font>")
+                    .arg(associatedDrone.id)
+                    .arg(footprintX_m, 0, 'f', 1)
+                    .arg(footprintY_m, 0, 'f', 1));
+        }
+
+        // === COORDINATE SYSTEM VALIDATION before calling PathPlanner ===
+        if (!validateCoordinateSystemMatch(subROIWGS84, ROIPolygonMinAreaRect, "generateWaypointsPerDecomposedArea"))
+        {
+            emit StatusMessageChanged(tr("<font color='red'>[CRITICAL]: Coordinate system mismatch for drone %1 - "
+                                         "sub-ROI and MAR must both be WGS84</font>")
+                                          .arg(associatedDrone.id));
+            continue;
+        }
+
+        if (!validateFootprintMeters(footprintX_m, footprintY_m, "generateWaypointsPerDecomposedArea"))
+        {
+            emit StatusMessageChanged(
+                tr("<font color='red'>[CRITICAL]: Unit mismatch - footprint not in meters for drone %1</font>")
+                    .arg(associatedDrone.id));
+            continue;
+        }
+
+        // Generate waypoints using MAR-based sweep pattern
+        // All inputs are now in METERS / WGS84 projected coordinates
+        QList<QPointF> waypoints =
+            pathPlanner.computeWaypointsWithMAR(subROIWGS84, footprintX_m, footprintY_m, ROIPolygonMinAreaRect);
+
+        if (waypoints.isEmpty())
+        {
+            emit StatusMessageChanged(
+                tr("<font color='red'>[WARNING]: No waypoints generated for drone %1 - check input validation</font>")
+                    .arg(associatedDrone.id));
+        }
+        else
+        {
+            emit StatusMessageChanged(
+                tr("[INFO]: Drone %1 generated %2 waypoints").arg(associatedDrone.id).arg(waypoints.size()));
+        }
+
+        qInfo() << "Drone" << associatedDrone.id << "has" << waypoints.size() << "waypoints for sub-ROI";
+
+        allWaypointsPerDrone.append(qMakePair(associatedDrone, waypoints));
     }
+
+    emit StatusMessageChanged(QString("Generated waypoints for %1 sub-ROIs").arg(allWaypointsPerDrone.size()));
 }
 
 void
 ROIArea::showWaypoints()
 {
+    if (allWaypointsPerDrone.isEmpty())
+    {
+        qWarning() << "No waypoints to display. Run generateWaypointsPerDecomposedArea() first.";
+        emit StatusMessageChanged(tr("<font color='red'>[WARNING]: No waypoints to display. Run "
+                                     "generateWaypointsPerDecomposedArea() first.</font>"));
+        return;
+    }
+
     cleanToOpenImage();
     addOverlay(getOverlayStackTop().first, "Waypoints Overlay");
 
-    QPainter painter(&getOverlayStackTop().first);
+    QImage& overlayImage = getOverlayStackTop().first;
+    QPainter painter(&overlayImage);
     if (!painter.isActive())
+    {
+        qWarning() << "Painter not active in showWaypoints";
+        emit StatusMessageChanged(
+            tr("<font color='red'>[CRITICAL]: Painter not active - cannot draw waypoints</font>"));
         return;
+    }
     painter.setRenderHint(QPainter::Antialiasing, true);
 
-    QVector<QColor> colors = {Qt::red,  Qt::green,   Qt::blue,      Qt::magenta, Qt::yellow,
-                              Qt::cyan, Qt::darkRed, Qt::darkGreen, Qt::darkBlue};
-    int colorIdx = 0;
+    // Analyze background and generate contrasting palette
+    QColor bgColor = analyzeBackgroundColor(overlayImage);
+    contrastingPalette = generateContrastingPalette(bgColor, qMax(allWaypointsPerDrone.size(), 16));
+    contrastingTextColor = getContrastingTextColor(bgColor);
 
-    for (const auto& pair : allWaypointsPerDrone)
+    qInfo() << "Background color analyzed:" << bgColor.name()
+            << "Luminance:" << (0.2126 * bgColor.redF() + 0.7152 * bgColor.greenF() + 0.0722 * bgColor.blueF())
+            << "Generated" << contrastingPalette.size() << "contrasting colors";
+
+    // Track placed label rectangles to avoid overlap
+    QList<QRectF> placedLabels;
+
+    int colorIdx = 0;
+    int totalWaypointsDrawn = 0;
+
+    for (const auto& dronePair : allWaypointsPerDrone)
     {
-        const drone& d = pair.first;
-        const QList<QPointF>& waypoints = pair.second;
-        QColor color = colors[colorIdx % colors.size()];
+        const drone& d = dronePair.first;
+        const QList<QPointF>& waypoints = dronePair.second;
+
+        qInfo() << "Processing drone" << d.id << "with" << waypoints.size() << "waypoints";
+
+        if (waypoints.isEmpty())
+        {
+            qWarning() << "No waypoints for drone" << d.id;
+            emit StatusMessageChanged(tr("<font color='orange'>[WARNING]: No waypoints for drone %1</font>").arg(d.id));
+            colorIdx++;
+            continue;
+        }
+
+        QColor color = contrastingPalette[colorIdx % contrastingPalette.size()];
         QPen pen(color);
-        pen.setWidth(3);
+        pen.setWidth(PEN_WIDTH_MEDIUM);
         painter.setPen(pen);
         painter.setBrush(color);
 
-        // Draw waypoints as circles
-        for (const QPointF& pt : waypoints)
+        // Convert all waypoints from geo to pixel coordinates at once
+        QPolygonF geoWaypoints;
+        for (const QPointF& wp : waypoints)
+            geoWaypoints << wp;
+
+        // Validate waypoints are in WGS84 before conversion
+        if (!isPolygonWGS84(geoWaypoints))
         {
-            painter.drawEllipse(pt, 4, 4); // radius 4 pixels
+            qCritical() << "Waypoints for drone" << d.id << "are not in WGS84 coordinates!";
+            emit StatusMessageChanged(tr("<font color='red'>[CRITICAL]: Waypoints for drone %1 not in WGS84 - cannot "
+                                         "convert to pixels</font>")
+                                          .arg(d.id));
+            colorIdx++;
+            continue;
         }
 
-        // Draw drone ID near the first waypoint (if any)
-        if (!waypoints.isEmpty())
+        QPolygonF pixelWaypoints = gdalHandler.geoPolygonToPixels(geoWaypoints);
+
+        qInfo() << "Converted" << geoWaypoints.size() << "geo waypoints to" << pixelWaypoints.size()
+                << "pixel waypoints";
+
+        if (pixelWaypoints.isEmpty())
         {
-            QFont font = painter.font();
-            font.setPointSize(12);
-            font.setBold(true);
-            painter.setFont(font);
-            painter.setPen(Qt::white);
-            painter.drawText(waypoints.first() + QPointF(8, -8), QString::number(d.id));
+            qWarning() << "Pixel waypoints empty after conversion for drone" << d.id;
+            emit StatusMessageChanged(
+                tr("<font color='red'>[WARNING]: Conversion to pixels failed for drone %1</font>").arg(d.id));
+            // Debug: print first few geo waypoints
+            for (int i = 0; i < qMin(3, waypoints.size()); ++i)
+                qInfo() << "  Geo waypoint" << i << ":" << waypoints[i];
+            colorIdx++;
+            continue;
         }
 
+        // Debug: print first few pixel waypoints
+        for (int i = 0; i < qMin(3, pixelWaypoints.size()); ++i)
+            qInfo() << "  Pixel waypoint" << i << ":" << pixelWaypoints[i];
+
+        // Calculate dot radius - use 1 pixel for dense waypoint grids
+        // For very large images, cap at 2 pixels to remain visible
+        qreal imageMinDim = qMin(overlayImage.width(), overlayImage.height());
+        qreal dotRadius =
+            qBound(DOT_RADIUS_MIN, imageMinDim * DOT_RADIUS_SCALE, DOT_RADIUS_MAX); // 0.05% of image, range [0.5, 2.0]
+
+        // Draw lines connecting consecutive waypoints (w_1 -> w_2 -> ... -> w_n)
+        QPen linePen(color);
+        linePen.setWidthF(qMax(DOT_RADIUS_MIN, dotRadius * 0.5)); // Line thinner than dots
+        painter.setPen(linePen);
+        painter.setBrush(Qt::NoBrush);
+        for (int i = 0; i < pixelWaypoints.size() - 1; ++i)
+        {
+            painter.drawLine(pixelWaypoints[i], pixelWaypoints[i + 1]);
+        }
+
+        // Draw each waypoint as a tiny dot (on top of lines)
+        painter.setPen(pen);
+        painter.setBrush(color);
+        for (const QPointF& pixelPt : pixelWaypoints)
+        {
+            painter.drawEllipse(pixelPt, dotRadius, dotRadius);
+        }
+
+        // Calculate bounding box of waypoints to position label outside
+        qreal minX = pixelWaypoints.first().x(), maxX = minX;
+        qreal minY = pixelWaypoints.first().y(), maxY = minY;
+        for (const QPointF& pt : pixelWaypoints)
+        {
+            minX = qMin(minX, pt.x());
+            maxX = qMax(maxX, pt.x());
+            minY = qMin(minY, pt.y());
+            maxY = qMax(maxY, pt.y());
+        }
+
+        // Position label OUTSIDE the sub-ROI bounding box, within image bounds
+        QFont font = painter.font();
+        font.setPointSize(FONT_SIZE_SMALL);
+        font.setBold(true);
+        painter.setFont(font);
+
+        QString labelText = QString("Drone %1 (%2 pts)").arg(d.id).arg(pixelWaypoints.size());
+        QFontMetrics fm(font);
+        int textWidth = fm.horizontalAdvance(labelText);
+        int textHeight = fm.height();
+
+        const qreal margin = LABEL_MARGIN_SMALL;
+        const qreal labelRotation = LABEL_ROTATION_DEG; // Rotate labels to angle away from waypoints
+        const int imgW = overlayImage.width();
+        const int imgH = overlayImage.height();
+
+        // Positions OUTSIDE the sub-ROI bounding box (above and to the sides)
+        QVector<QPointF> candidatePositions = {
+            QPointF(minX - margin, minY - margin),                 // Above top-left (outside)
+            QPointF(maxX + margin, minY - margin),                 // Above top-right (outside)
+            QPointF(minX - textWidth - margin, minY + textHeight), // Left of top-left (outside)
+            QPointF(maxX + margin, maxY),                          // Right of bottom-right (outside)
+        };
+
+        // Lambda to check if a label rect overlaps with any placed label
+        auto overlapsPlacedLabels = [&](const QRectF& rect) -> bool {
+            for (const QRectF& placed : placedLabels)
+            {
+                if (rect.intersects(placed))
+                    return true;
+            }
+            return false;
+        };
+
+        // Lambda to check if position is valid (within bounds and no overlap)
+        auto isValidPosition = [&](const QPointF& pt) -> bool {
+            QRectF labelRect(pt.x() - 2, pt.y() - textHeight, textWidth + 4, textHeight + 4);
+            return pt.x() >= 0 && pt.x() + textWidth <= imgW && pt.y() - textHeight >= 0 && pt.y() <= imgH &&
+                   !overlapsPlacedLabels(labelRect);
+        };
+
+        QPointF labelPt = candidatePositions[colorIdx % candidatePositions.size()];
+        bool foundValidPosition = false;
+
+        // First pass: try all candidate positions
+        for (const QPointF& candidate : candidatePositions)
+        {
+            if (isValidPosition(candidate))
+            {
+                labelPt = candidate;
+                foundValidPosition = true;
+                break;
+            }
+        }
+
+        // Second pass: if no valid position, try vertical offsets to avoid overlap
+        if (!foundValidPosition)
+        {
+            for (const QPointF& candidate : candidatePositions)
+            {
+                // Try shifting up/down in increments of textHeight
+                for (int yOffset = 0; yOffset <= imgH; yOffset += textHeight + 5)
+                {
+                    QPointF shifted = candidate + QPointF(0, yOffset);
+                    if (isValidPosition(shifted))
+                    {
+                        labelPt = shifted;
+                        foundValidPosition = true;
+                        break;
+                    }
+                    // Also try shifting up
+                    shifted = candidate - QPointF(0, yOffset);
+                    if (isValidPosition(shifted))
+                    {
+                        labelPt = shifted;
+                        foundValidPosition = true;
+                        break;
+                    }
+                }
+                if (foundValidPosition)
+                    break;
+            }
+        }
+
+        // Final clamp to ensure label stays within image bounds
+        labelPt.setX(qBound(2.0, labelPt.x(), qreal(imgW - textWidth - 2)));
+        labelPt.setY(qBound(qreal(textHeight + 2), labelPt.y(), qreal(imgH - 2)));
+
+        // Record this label's bounding rect (approximate for rotated text)
+        QRectF labelRect(labelPt.x() - 2, labelPt.y() - textHeight - 2, textWidth + 4, textHeight + 4);
+        placedLabels.append(labelRect);
+
+        // Draw rotated label with background for visibility
+        painter.save();
+        painter.translate(labelPt);
+        painter.rotate(labelRotation);
+
+        // Draw background rect at rotated position
+        painter.setPen(Qt::NoPen);
+        painter.setBrush(QColor(bgColor.red(), bgColor.green(), bgColor.blue(), ALPHA_LABEL_BG));
+        painter.drawRect(QRectF(-2, -textHeight, textWidth + 4, textHeight + 4));
+
+        // Draw text
+        painter.setPen(color);
+        painter.drawText(QPointF(0, 0), labelText);
+
+        painter.restore();
+
+        totalWaypointsDrawn += pixelWaypoints.size();
+        qInfo() << "Drew" << pixelWaypoints.size() << "waypoints for drone" << d.id;
         colorIdx++;
     }
 
     painter.end();
     update();
+    emit StatusMessageChanged(QString("[INFO]: Displayed %1 waypoints for %2 drones")
+                                  .arg(totalWaypointsDrawn)
+                                  .arg(allWaypointsPerDrone.size()));
+}
+
+QColor
+ROIArea::analyzeBackgroundColor(const QImage& image, const QRectF& region) const
+{
+    if (image.isNull())
+        return QColor(128, 128, 128); // Default to gray if no image
+
+    // Determine the sampling region
+    QRect sampleRect;
+    if (region.isValid() && !region.isEmpty())
+    {
+        sampleRect = region.toRect().intersected(image.rect());
+    }
+    else
+    {
+        sampleRect = image.rect();
+    }
+
+    if (sampleRect.isEmpty())
+        return QColor(128, 128, 128);
+
+    // Sample pixels at regular intervals for efficiency (don't need every pixel)
+    const int sampleStep = qMax(1, qMin(sampleRect.width(), sampleRect.height()) / 50);
+    qint64 totalR = 0, totalG = 0, totalB = 0;
+    int sampleCount = 0;
+
+    for (int y = sampleRect.top(); y < sampleRect.bottom(); y += sampleStep)
+    {
+        for (int x = sampleRect.left(); x < sampleRect.right(); x += sampleStep)
+        {
+            QColor pixelColor = image.pixelColor(x, y);
+            totalR += pixelColor.red();
+            totalG += pixelColor.green();
+            totalB += pixelColor.blue();
+            sampleCount++;
+        }
+    }
+
+    if (sampleCount == 0)
+        return QColor(128, 128, 128);
+
+    return QColor(totalR / sampleCount, totalG / sampleCount, totalB / sampleCount);
+}
+
+QVector<QColor>
+ROIArea::generateContrastingPalette(const QColor& backgroundColor, int numColors) const
+{
+    QVector<QColor> palette;
+    palette.reserve(numColors);
+
+    // Calculate background luminance (perceived brightness)
+    // Using ITU-R BT.709 luminance formula
+    double bgLuminance =
+        0.2126 * backgroundColor.redF() + 0.7152 * backgroundColor.greenF() + 0.0722 * backgroundColor.blueF();
+
+    // Get background HSV for smarter color selection
+    int bgHue, bgSat, bgVal;
+    backgroundColor.getHsv(&bgHue, &bgSat, &bgVal);
+
+    // Determine if we need light or dark colors based on background
+    bool needLightColors = bgLuminance < 0.5;
+
+    // Target value (brightness) for generated colors
+    int targetValue = needLightColors ? 255 : 200;
+    int targetSaturation = 255; // High saturation for visibility
+
+    // For very light backgrounds, use darker saturated colors
+    if (bgLuminance > 0.7)
+    {
+        targetValue = ALPHA_LABEL_BG;
+        targetSaturation = 255;
+    }
+
+    // Generate colors evenly distributed around the color wheel
+    // Offset from background hue to avoid similar colors
+    int hueOffset = (bgHue + HUE_OPPOSITE) % HUE_FULL_CIRCLE; // Start opposite to background
+
+    for (int i = 0; i < numColors; ++i)
+    {
+        // Distribute hues evenly, starting from opposite of background
+        int hue = (hueOffset + (i * HUE_FULL_CIRCLE) / numColors) % HUE_FULL_CIRCLE;
+
+        // Avoid hues too close to the background hue (within 30 degrees)
+        if (bgSat > 50) // Only if background has significant saturation
+        {
+            int hueDiff = qAbs(hue - bgHue);
+            if (hueDiff > HUE_OPPOSITE)
+                hueDiff = HUE_FULL_CIRCLE - hueDiff;
+            if (hueDiff < 30)
+            {
+                hue = (hue + HUE_SHIFT_AMOUNT) % HUE_FULL_CIRCLE; // Shift away from background
+            }
+        }
+
+        // Vary saturation and value slightly for visual distinction
+        int sat = targetSaturation - (i % 3) * 20;
+        int val = targetValue - (i % 2) * 30;
+
+        QColor color = QColor::fromHsv(hue, sat, val);
+
+        // Final contrast check - ensure minimum contrast ratio
+        double colorLuminance = 0.2126 * color.redF() + 0.7152 * color.greenF() + 0.0722 * color.blueF();
+        double contrastRatio = (qMax(bgLuminance, colorLuminance) + 0.05) / (qMin(bgLuminance, colorLuminance) + 0.05);
+
+        // If contrast is too low, adjust brightness
+        if (contrastRatio < 3.0)
+        {
+            if (needLightColors)
+                color = color.lighter(150);
+            else
+                color = color.darker(150);
+        }
+
+        palette.append(color);
+    }
+
+    return palette;
+}
+
+QColor
+ROIArea::getContrastingTextColor(const QColor& backgroundColor) const
+{
+    // Calculate luminance
+    double luminance =
+        0.2126 * backgroundColor.redF() + 0.7152 * backgroundColor.greenF() + 0.0722 * backgroundColor.blueF();
+
+    // Return white for dark backgrounds, black for light backgrounds
+    // Using WCAG recommended threshold
+    if (luminance < 0.5)
+        return QColor(255, 255, 255); // White
+    else
+        return QColor(0, 0, 0); // Black
 }

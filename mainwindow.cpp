@@ -150,39 +150,33 @@ MainWindow::onCalculateDroneCapabilities()
         QStandardItem* droneItem = new QStandardItem(QString("%1 (ID: %2)").arg(d.name).arg(d.id));
         droneItem->setEditable(false);
 
-        // Flight Altitude
-        QString altitudeStr = d.ideal_flight_altitude > 100.0
-                                  ? QString::number(d.ideal_flight_altitude / 100.0, 'f', 2) + " m"
-                                  : QString::number(d.ideal_flight_altitude, 'f', 2) + " cm";
-        QStandardItem* altitudeLabel = new QStandardItem("Flight Altitude");
+        // Flight Altitude (SI: meters)
+        QString altitudeStr = QString::number(d.ideal_flight_altitude, 'f', 2) + " m";
+        QStandardItem* altitudeLabel = new QStandardItem("Ideal Flight Altitude");
         QStandardItem* altitudeValue = new QStandardItem(altitudeStr);
         altitudeLabel->setEditable(false);
         altitudeValue->setEditable(false);
         droneItem->appendRow(QList<QStandardItem*>() << altitudeLabel << altitudeValue);
 
-        // Camera Footprint X
-        QString footprintXStr = d.max_x_footprint > 100.0 ? QString::number(d.max_x_footprint / 100.0, 'f', 2) + " m"
-                                                          : QString::number(d.max_x_footprint, 'f', 2) + " cm";
+        // Camera Footprint X (SI: meters)
+        QString footprintXStr = QString::number(d.max_x_footprint, 'f', 2) + " m";
         QStandardItem* footprintXLabel = new QStandardItem("Camera Footprint X");
         QStandardItem* footprintXValue = new QStandardItem(footprintXStr);
         footprintXLabel->setEditable(false);
         footprintXValue->setEditable(false);
         droneItem->appendRow(QList<QStandardItem*>() << footprintXLabel << footprintXValue);
 
-        // Camera Footprint Y
-        QString footprintYStr = d.max_y_footprint > 100.0 ? QString::number(d.max_y_footprint / 100.0, 'f', 2) + " m"
-                                                          : QString::number(d.max_y_footprint, 'f', 2) + " cm";
+        // Camera Footprint Y (SI: meters)
+        QString footprintYStr = QString::number(d.max_y_footprint, 'f', 2) + " m";
         QStandardItem* footprintYLabel = new QStandardItem("Camera Footprint Y");
         QStandardItem* footprintYValue = new QStandardItem(footprintYStr);
         footprintYLabel->setEditable(false);
         footprintYValue->setEditable(false);
         droneItem->appendRow(QList<QStandardItem*>() << footprintYLabel << footprintYValue);
 
-        // Max Forward Velocity
-        QString velocityStr = d.max_forward_velocity > 100.0
-                                  ? QString::number(d.max_forward_velocity / 100.0, 'f', 2) + " m/s"
-                                  : QString::number(d.max_forward_velocity, 'f', 2) + " cm/s";
-        QStandardItem* velocityLabel = new QStandardItem("Max Forward Velocity");
+        // Max Forward Velocity (SI: m/s)
+        QString velocityStr = QString::number(d.max_forward_velocity, 'f', 2) + " m/s";
+        QStandardItem* velocityLabel = new QStandardItem("Ideal Forward Velocity");
         QStandardItem* velocityValue = new QStandardItem(velocityStr);
         velocityLabel->setEditable(false);
         velocityValue->setEditable(false);
@@ -278,5 +272,6 @@ MainWindow::on_roiArea_StatusMessageChanged(const QString& text)
 void
 MainWindow::onCalculateWaypoints()
 {
+    ui->roiArea->generateWaypointsPerDecomposedArea();
     ui->roiArea->showWaypoints();
 }

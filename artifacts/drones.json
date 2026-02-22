@@ -1,24 +1,36 @@
 {
+    "_units": {
+        "description": "All values in SI units",
+        "focal_length": "meters",
+        "array_width": "meters",
+        "array_height": "meters",
+        "image_width": "pixels",
+        "image_height": "pixels",
+        "shutter_speed": "seconds",
+        "horizontal_velocity": "m/s",
+        "vertical_velocity": "m/s",
+        "battery_capacity": "mAh",
+        "current_capacity": "percentage (0-100)"
+    },
     "drones": [
         {
             "id": "drone_001",
             "name": "DJI Mavic 3",
             "battery": {
                 "capacity": 5000,
-                "current_capacity": "30" 
+                "current_capacity": "30"
             },
             "max_velocity": {
                 "horizontal": 19.0,
                 "vertical": 6.0
             },
-            "Camera":
-            {
-                "focal_length": "24.0",
-                "array_width": "17.3",
-                "array_height": "13.0",
+            "Camera": {
+                "focal_length": "0.024",
+                "array_width": "0.0173",
+                "array_height": "0.013",
                 "image_width": "5280",
                 "image_height": "3956",
-                "shutter_speed": "1.0" 
+                "shutter_speed": "1.0"
             }
         },
         {
@@ -26,20 +38,19 @@
             "name": "DJI Phantom 4 Pro",
             "battery": {
                 "capacity": 5870,
-                "current_capacity": "80" 
+                "current_capacity": "80"
             },
             "max_velocity": {
                 "horizontal": 20.0,
                 "vertical": 6.0
             },
-            "Camera":
-            {
-                "focal_length": "8.8",
-                "array_width": "13.2",
-                "array_height": "8.8",
+            "Camera": {
+                "focal_length": "0.0088",
+                "array_width": "0.0132",
+                "array_height": "0.0088",
                 "image_width": "5472",
                 "image_height": "3648",
-                "shutter_speed": "1.0" 
+                "shutter_speed": "1.0"
             }
         },
         {
@@ -47,20 +58,19 @@
             "name": "Autel Robotics EVO II",
             "battery": {
                 "capacity": 7100,
-                "current_capacity": "100" 
+                "current_capacity": "100"
             },
             "max_velocity": {
                 "horizontal": 20.0,
                 "vertical": 6.0
             },
-            "Camera":
-            {
-                "focal_length": "4.5",
-                "array_width": "6.4",
-                "array_height": "4.8",
+            "Camera": {
+                "focal_length": "0.0045",
+                "array_width": "0.0064",
+                "array_height": "0.0048",
                 "image_width": "8000",
                 "image_height": "6000",
-                "shutter_speed": "1.0" 
+                "shutter_speed": "1.0"
             }
         }
     ]
