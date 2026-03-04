@@ -30,7 +30,7 @@
                 "array_height": "0.013",
                 "image_width": "5280",
                 "image_height": "3956",
-                "shutter_speed": "1.0"
+                "shutter_speed": "0.000125"
             }
         },
         {
@@ -50,7 +50,7 @@
                 "array_height": "0.0088",
                 "image_width": "5472",
                 "image_height": "3648",
-                "shutter_speed": "1.0"
+                "shutter_speed": "0.001"
             }
         },
         {
@@ -70,7 +70,7 @@
                 "array_height": "0.0048",
                 "image_width": "8000",
                 "image_height": "6000",
-                "shutter_speed": "1.0"
+                "shutter_speed": "0.0005"
             }
         }
     ]
