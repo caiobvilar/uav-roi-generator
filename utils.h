@@ -13,8 +13,8 @@
 // === SI UNITS USED THROUGHOUT ===
 // All lengths in METERS, time in SECONDS, velocity in M/S
 #define DESIRED_GSD 0.02    // Ground sample distance: 0.02 m/pixel (2 cm/pixel) for precision agriculture
-#define FORWARD_OVERLAP 0.2 // Forward overlap ratio (20%) - spacing = footprint * 0.8
-#define SIDE_OVERLAP 0.25   // Side overlap ratio (25%) - spacing = footprint * 0.75
+#define FORWARD_OVERLAP 0.8 // Forward overlap ratio (20%) - spacing = footprint * 0.8
+#define SIDE_OVERLAP 0.75   // Side overlap ratio (25%) - spacing = footprint * 0.75
 
 // === WIDGET DIMENSIONS ===
 #define WIDGET_MIN_HEIGHT 650 // Minimum widget height in pixels
