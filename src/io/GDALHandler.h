@@ -32,7 +32,7 @@ class GDALHandler
     QPolygonF
     polygonToGeo(const QPolygonF& poly) const;
 
-    GDALDataset*
+    const GDALDataset*
     getDataset() const
     {
         return srcDataset;

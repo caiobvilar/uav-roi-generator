@@ -557,7 +557,7 @@ ImageCanvas::exportPolygonGeoJSON() const
 
     // Now reproject to WGS84 using the extracted GeoJSON IO layer
     QString srcWkt;
-    GDALDataset* srcDS = gdalHandler.getDataset();
+    const GDALDataset* srcDS = gdalHandler.getDataset();
     if (srcDS)
     {
         const char* wkt = srcDS->GetProjectionRef();
