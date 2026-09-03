@@ -13,6 +13,7 @@ qt_add_executable(ROIGenerator WIN32 MACOSX_BUNDLE
     main.cpp
     ROIArea.h ROIArea.cpp
     GDALHandler.h GDALHandler.cpp
+    io/GeoJSON.h io/GeoJSON.cpp
     mainwindow.h mainwindow.cpp mainwindow.ui
     pathplanner.h pathplanner.cpp
     geometry/ConvexHull.h geometry/ConvexHull.cpp

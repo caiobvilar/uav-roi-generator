@@ -3,6 +3,7 @@
 
 #include "ROIArea.h"
 #include "GDALHandler.h"
+#include "io/GeoJSON.h"
 #include "geometry/ConvexHull.h"
 #include "geometry/PolygonGeometry.h"
 #include "pathplanner.h"
@@ -551,8 +552,16 @@ ROIArea::exportPolygonGeoJSON() const
 
     QJsonDocument srcDoc(fc);
 
-    // Now reproject to WGS84 using GDALHandler
-    QJsonDocument wgs84Doc = gdalHandler.reprojectGeoJSONPolygon(srcDoc);
+    // Now reproject to WGS84 using the extracted GeoJSON IO layer
+    QString srcWkt;
+    GDALDataset* srcDS = gdalHandler.getDataset();
+    if (srcDS)
+    {
+        const char* wkt = srcDS->GetProjectionRef();
+        if (wkt)
+            srcWkt = QString::fromUtf8(wkt);
+    }
+    QJsonDocument wgs84Doc = geo::reprojectToWgs84(srcDoc, srcWkt);
 
     if (wgs84Doc.isNull())
     {
@@ -585,7 +594,7 @@ QList<QPointF>
 ROIArea::openGeoJSONFilePoints(const QString& filename)
 {
     qInfo() << Q_FUNC_INFO << "IS THIS BEING CALLED AT ALL?????";
-    return gdalHandler.loadPolygonFromGeoJSON(filename);
+    return geo::importPolygon(filename);
 }
 
 void

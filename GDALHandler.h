@@ -12,8 +12,6 @@
 #include <QtMath>
 #include <cpl_conv.h> // CPLMalloc
 #include <gdal_priv.h>
-#include <ogr_spatialref.h>
-#include <ogrsf_frmts.h>
 
 #define GEO_TRANSFORM_SIZE 6
 
@@ -49,12 +47,8 @@ class GDALHandler
         return dataSetCRSInfo;
     }
 
-    QJsonDocument
-    reprojectGeoJSONPolygon(const QJsonDocument& srcDoc) const;
     QImage
     toQImage() const;
-    QList<QPointF>
-    loadPolygonFromGeoJSON(const QString& path);
     QPointF
     geoToPixel(const QPointF& geo) const;
     QPolygonF
@@ -65,6 +59,8 @@ class GDALHandler
   private:
     GDALDataset* srcDataset = nullptr;
     double geoTransform[GEO_TRANSFORM_SIZE];
+    double invGeoTransform[GEO_TRANSFORM_SIZE];
+    bool hasInvGeoTransform = false;
     QString dataSetCRSInfo = QString("NaN");
 };
 
