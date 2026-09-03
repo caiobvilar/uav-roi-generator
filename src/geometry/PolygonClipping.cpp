@@ -4,7 +4,7 @@
 
 namespace geometry {
 
-QPolygonF sutherlandHodgmanClip(QPolygonF subject, const QPolygonF& clip)
+QPolygonF sutherlandHodgmanClip(const QPolygonF& subject, const QPolygonF& clip)
 {
     // Sutherland-Hodgman polygon clipping algorithm
     QPolygonF inputPoly = subject;

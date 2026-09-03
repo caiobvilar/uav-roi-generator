@@ -4,7 +4,7 @@
 #include <QPolygonF>
 
 namespace geometry {
-QPolygonF sutherlandHodgmanClip(QPolygonF subject, const QPolygonF& clip);
+QPolygonF sutherlandHodgmanClip(const QPolygonF& subject, const QPolygonF& clip);
 } // namespace geometry
 
 #endif

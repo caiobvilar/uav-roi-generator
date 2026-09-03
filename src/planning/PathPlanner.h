@@ -26,7 +26,7 @@ class PathPlanner
     generateWaypoints(const QPolygonF& subRoi, const Drone& d, const RotatedRect& mar) const;
 
     void
-    setDroneList(QList<Drone> list)
+    setDroneList(const QList<Drone>& list)
     {
         this->m_drones = list;
     }

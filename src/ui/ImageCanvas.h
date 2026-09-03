@@ -76,7 +76,7 @@ class ImageCanvas : public QWidget
     drawPolygonOutline(const QPolygonF& polygon);
 
     void
-    setPolygonMinAreaRect(RotatedRect rect)
+    setPolygonMinAreaRect(const RotatedRect& rect)
     {
         ROIPolygonMinAreaRect = rect;
     }
