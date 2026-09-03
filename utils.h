@@ -61,12 +61,6 @@
 // === VALIDATION THRESHOLDS ===
 #define MAR_SIZE_MAX 100000 // Maximum MAR dimension for validation
 
-struct PathSegment
-{
-    double cumulativeDistance = 0.0; // Cumulative distance at this segment
-    QList<QPointF> waypoints;        // Waypoints for this segment
-};
-
 struct RotatedRect
 {
     QRectF rect;

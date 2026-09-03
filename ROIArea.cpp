@@ -675,90 +675,6 @@ ROIArea::saveGEOJson(QByteArray& document)
     }
 }
 
-QByteArray
-ROIArea::reprojectGeoJSONPolygon(const QByteArray& srcJson) const
-{
-    QJsonParseError err;
-    QJsonDocument srcDoc = QJsonDocument::fromJson(srcJson, &err);
-    if (err.error != QJsonParseError::NoError || !srcDoc.isObject())
-        return QByteArray();
-
-    QJsonObject fc = srcDoc.object();
-    if (fc.value("type").toString() != QLatin1String("FeatureCollection"))
-        return QByteArray();
-
-    QJsonArray features = fc.value("features").toArray();
-    if (features.isEmpty() || !features.at(0).isObject())
-        return QByteArray();
-
-    QJsonObject feature = features.at(0).toObject();
-    QJsonObject geom = feature.value("geometry").toObject();
-    if (geom.value("type").toString() != QLatin1String("Polygon"))
-        return QByteArray();
-
-    QJsonArray coords = geom.value("coordinates").toArray();
-    if (coords.isEmpty() || !coords.at(0).isArray())
-        return QByteArray();
-
-    QJsonArray ring = coords.at(0).toArray(); // first linear ring
-
-    // --- set up CRS transform: EPSG:31984 -> EPSG:4326 ---
-    OGRSpatialReference srcSRS, dstSRS;
-    if (srcSRS.importFromEPSG(31984) != OGRERR_NONE)
-        return QByteArray();
-    if (dstSRS.importFromEPSG(4326) != OGRERR_NONE)
-        return QByteArray();
-
-    OGRCoordinateTransformation* ct = OGRCreateCoordinateTransformation(&srcSRS, &dstSRS);
-    if (!ct)
-        return QByteArray();
-
-    QJsonArray outRing;
-    for (int i = 0; i < ring.size(); ++i)
-    {
-        QJsonArray c = ring.at(i).toArray();
-        if (c.size() < 2)
-        {
-            outRing.append(c);
-            continue;
-        }
-
-        double x = c.at(0).toDouble(); // easting (m)
-        double y = c.at(1).toDouble(); // northing (m)
-        double z = 0.0;
-
-        if (!ct->Transform(1, &x, &y, &z))
-        {
-            outRing.append(c); // fallback: keep original
-            continue;
-        }
-
-        QJsonArray outC;
-        outC.append(x); // lon
-        outC.append(y); // lat
-        outRing.append(outC);
-    }
-    OCTDestroyCoordinateTransformation(ct);
-
-    QJsonArray outCoords;
-    outCoords.append(outRing);
-    geom["coordinates"] = outCoords;
-    feature["geometry"] = geom;
-
-    // update CRS properties
-    QJsonObject props = feature.value("properties").toObject();
-    props["crs_authority"] = QLatin1String("EPSG");
-    props["crs_code"] = 4326;
-    props["crs_name"] = QLatin1String("WGS 84");
-    feature["properties"] = props;
-
-    features[0] = feature;
-    fc["features"] = features;
-
-    QJsonDocument outDoc(fc);
-    return outDoc.toJson(QJsonDocument::Indented);
-}
-
 QList<QPointF>
 ROIArea::openGeoJSONFilePoints(const QString& filename)
 {
@@ -767,14 +683,16 @@ ROIArea::openGeoJSONFilePoints(const QString& filename)
 }
 
 void
-ROIArea::drawGeoPolygonOnImage(QImage* img, const QList<QPointF>& geoPts)
+ROIArea::drawGeoPolygonOnCurrentOverlay(const QList<QPointF>& geoPts)
 {
-    qInfo() << Q_FUNC_INFO << "IS THIS BEING CALLED AT ALL?????";
-    if (!img || img->isNull())
+    emit StatusMessageChanged(QString(Q_FUNC_INFO));
+    if (overlayStack.empty())
     {
-        qDebug() << "drawGeoPolygonOnImage: null image";
+        qDebug() << "overlayList is empty.";
         return;
     }
+
+    QImage& img = getOverlayStackTop().first;
 
     // Convert QList<QPointF> to QPolygonF in pixel space
     QPolygonF pixPoly = gdalHandler.geoPolygonToPixels(geoPts); // change overload accordingly
@@ -782,8 +700,8 @@ ROIArea::drawGeoPolygonOnImage(QImage* img, const QList<QPointF>& geoPts)
     qDebug() << "geoPts count =" << geoPts.size() << "pixPoly count =" << pixPoly.size();
 
     // Image size
-    const int w = img->width();
-    const int h = img->height();
+    const int w = img.width();
+    const int h = img.height();
 
     // Compute polygon bounding box
     if (pixPoly.isEmpty())
@@ -821,7 +739,7 @@ ROIArea::drawGeoPolygonOnImage(QImage* img, const QList<QPointF>& geoPts)
     for (int i = 0; i < pixPoly.size() && i < 3; ++i)
         qDebug() << "pix" << i << pixPoly.at(i);
 
-    QPainter p(img);
+    QPainter p(&img);
     if (!p.isActive())
     {
         qDebug() << "drawGeoPolygonOnImage: painter not active";
@@ -836,19 +754,6 @@ ROIArea::drawGeoPolygonOnImage(QImage* img, const QList<QPointF>& geoPts)
     p.drawPolygon(pixPoly);
 
     update(); // repaint widget
-}
-
-void
-ROIArea::drawGeoPolygonOnCurrentOverlay(const QList<QPointF>& geoPts)
-{
-    emit StatusMessageChanged(QString(Q_FUNC_INFO));
-    if (overlayStack.empty())
-    {
-        qDebug() << "overlayList is empty.";
-        return;
-    }
-
-    drawGeoPolygonOnImage(&getOverlayStackTop().first, geoPts);
 }
 
 void
@@ -1231,53 +1136,6 @@ ROIArea::showDecomposedROI()
 
     update();
     emit StatusMessageChanged(tr("Decomposed ROI polygons drawn on overlay."));
-}
-
-QList<QPointF>
-ROIArea::generateSweepWaypoints(const QPolygonF& subROI, const drone& d, const RotatedRect& mar) const
-{
-    QList<QPointF> waypoints;
-    if (subROI.size() < 3)
-        return waypoints;
-
-    // 1. Find the two sides of the bounding box that are parallel to the sweep direction
-    // We'll use the MAR (minimum area rectangle) for this
-    QPointF A1 = mar.origin;
-    QPointF B1 = mar.origin + mar.height * mar.uy;
-    QPointF A2 = mar.origin + mar.width * mar.ux;
-    QPointF B2 = mar.origin + mar.width * mar.ux + mar.height * mar.uy;
-
-    // For sweeping along the width (mar.ux), sides are (A1,B1) and (A2,B2)
-    double L = QLineF(A1, B1).length(); // Length of side for waypoints
-    double step = d.max_y_footprint * (1.0 - SIDE_OVERLAP);
-    if (step <= 0)
-        step = L / 10; // fallback
-
-    int nWaypoints = std::max(2, int(std::ceil(L / step)) + 1);
-
-    for (int l = 0; l < nWaypoints; ++l)
-    {
-        double theta = (nWaypoints == 1) ? 0.5 : double(l) / (nWaypoints - 1);
-        // Equation (19): w_{1,l} = A1*(1-theta) + B1*theta
-        QPointF w1 = A1 * (1.0 - theta) + B1 * theta;
-        QPointF w2 = A2 * (1.0 - theta) + B2 * theta;
-
-        // Interpolate between w1 and w2 to get sweep points
-        double sweepLen = QLineF(w1, w2).length();
-        double dotSpacing = d.max_y_footprint * (1.0 - FORWARD_OVERLAP);
-        if (dotSpacing <= 0)
-            dotSpacing = sweepLen / 10; // fallback
-
-        int nDots = std::max(2, int(std::ceil(sweepLen / dotSpacing)) + 1);
-        for (int k = 0; k < nDots; ++k)
-        {
-            double t = (nDots == 1) ? 0.5 : double(k) / (nDots - 1);
-            QPointF pt = w1 * (1.0 - t) + w2 * t;
-            if (subROI.containsPoint(pt, Qt::OddEvenFill))
-                waypoints.append(pt);
-        }
-    }
-    return waypoints;
 }
 
 void

@@ -67,12 +67,8 @@ class ROIArea : public QWidget
     cleanToOpenImage();
     void
     saveGEOJson(QByteArray& document);
-    QByteArray
-    reprojectGeoJSONPolygon(const QByteArray& srcJson) const;
     QList<QPointF>
     openGeoJSONFilePoints(const QString& filename);
-    void
-    drawGeoPolygonOnImage(QImage* img, const QList<QPointF>& geoPts);
     void
     drawGeoPolygonOnCurrentOverlay(const QList<QPointF>& geoPts);
     void
@@ -111,8 +107,6 @@ class ROIArea : public QWidget
     decomposeROI();
     void
     showDecomposedROI();
-    QList<QPointF>
-    generateSweepWaypoints(const QPolygonF& subROI, const drone& d, const RotatedRect& mar) const;
 
     PathPlanner&
     getPathPlanner()
