@@ -5,7 +5,6 @@
 #define ROIAREA_H
 
 #include "GDALHandler.h"
-#include "grahamscan.h"
 #include <QColor>
 #include <QDebug>
 #include <QFileDialog>
@@ -55,8 +54,6 @@ class ROIArea : public QWidget
     getOverlayStackTop();
     void
     cleanOverlayStack();
-    RotatedRect
-    minimumAreaRectangle(const QList<QPointF>& hull);
     void
     clearPolygon();
     void
@@ -150,7 +147,7 @@ class ROIArea : public QWidget
 
 
   private:
-    GrahamScan grahamScanner;
+    QList<QPointF> m_grahamPoints;
     GDALHandler gdalHandler;
     PathPlanner pathPlanner;
     QPointF
@@ -162,13 +159,7 @@ class ROIArea : public QWidget
     void
     drawPolygon(const QPolygonF& polygon);
     QPolygonF
-    rotatedRectToPolygon(const RotatedRect& r);
-    QPolygonF
     snapPolygon(const QPolygonF& poly);
-    double
-    dot(const QPointF& a, const QPointF& b);
-    QPointF
-    perp(const QPointF& v);
     bool modified = false;
     bool writing = false;
     bool haveStartPoint = false;

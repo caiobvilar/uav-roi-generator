@@ -18,7 +18,9 @@ qt_add_executable(ROIGenerator
 
 
     ROIArea.h ROIArea.cpp
-    grahamscan.h grahamscan.cpp
+    geometry/ConvexHull.h geometry/ConvexHull.cpp
+    geometry/PolygonGeometry.h geometry/PolygonGeometry.cpp
+    geometry/PolygonClipping.h geometry/PolygonClipping.cpp
     GDALHandler.h GDALHandler.cpp
     mainwindow.h mainwindow.cpp mainwindow.ui
     pathplanner.h pathplanner.cpp

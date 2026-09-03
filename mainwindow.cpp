@@ -1,4 +1,5 @@
 #include "mainwindow.h"
+#include "geometry/PolygonGeometry.h"
 #include "pathplanner.h"
 #include "ui_mainwindow.h"
 #include <QApplication>
@@ -239,7 +240,7 @@ MainWindow::onDecomposeROI()
     {
         const QPolygonF& poly = pair.first;
         const QString& droneId = pair.second;
-        double area = ui->roiArea->getPathPlanner().calculatePolygonArea(poly);
+        double area = geometry::shoelaceArea(poly);
         QString desc = QString("Polygon %1 | Drone ID: %2 | Vertices: %3 | Area: %4")
                            .arg(idx + 1)
                            .arg(droneId)

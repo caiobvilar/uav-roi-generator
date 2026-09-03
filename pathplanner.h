@@ -28,11 +28,6 @@ class PathPlanner : public QObject
     calcDroneRelativeCapability(QList<drone>& droneList);
     QList<QPair<QPolygonF, QString>>
     decomposedROI(QPolygonF& roi, QList<drone>& droneList, const RotatedRect& mar);
-    double
-    calculatePolygonArea(const QPolygonF& polygon);
-
-    QPolygonF
-    suth_hodgman_polygon_clipper(QPolygonF& divider_poly, QPolygonF& target_poly);
 
     void
     setDroneList(QList<drone> list)

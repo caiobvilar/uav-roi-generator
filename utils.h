@@ -2,6 +2,8 @@
 #define UTILS_H_
 
 
+#include "domain/RotatedRect.h"
+
 #include <QDebug>
 #include <QPointF>
 #include <QPolygonF>
@@ -60,18 +62,6 @@
 
 // === VALIDATION THRESHOLDS ===
 #define MAR_SIZE_MAX 100000 // Maximum MAR dimension for validation
-
-struct RotatedRect
-{
-    QRectF rect;
-    qreal angle;
-    QPointF origin; // corner at (minX, minY) in image coords
-    QPointF ux;     // unit vector along width (x‑axis of rect)
-    QPointF uy;     // unit vector along height (y‑axis of rect)
-    qreal width;
-    qreal height;
-    // orientation of the box in radians
-};
 
 // === DRONE STRUCTURE ===
 // All units follow SI: lengths in meters, time in seconds, velocity in m/s

@@ -1,4 +1,6 @@
 #include "pathplanner.h"
+#include "geometry/PolygonClipping.h"
+#include "geometry/PolygonGeometry.h"
 #include "utils.h"
 #include <QFile>
 #include <QIODevice>
@@ -176,26 +178,6 @@ PathPlanner::calcDroneRelativeCapability(QList<drone>& droneList)
     }
 }
 
-// Helper function to calculate polygon area using Shoelace formula
-double
-PathPlanner::calculatePolygonArea(const QPolygonF& polygon)
-{
-    if (polygon.size() < 3)
-    {
-        return 0.0;
-    }
-
-    double area = 0.0;
-    for (int i = 0; i < polygon.size(); ++i)
-    {
-        QPointF p1 = polygon[i];
-        QPointF p2 = polygon[(i + 1) % polygon.size()];
-        area += (p1.x() * p2.y() - p2.x() * p1.y());
-    }
-
-    return qAbs(area) / 2.0;
-}
-
 void
 PathPlanner::setDecomposedROIs(const QList<QPair<QPolygonF, QString>>& decompROIs)
 {
@@ -206,91 +188,6 @@ QList<QPair<QPolygonF, QString>>
 PathPlanner::getDecomposedROIs() const
 {
     return this->decomposedPolygons;
-}
-
-QPolygonF
-PathPlanner::suth_hodgman_polygon_clipper(QPolygonF& divider_poly, QPolygonF& target_poly)
-{
-    // Sutherland-Hodgman polygon clipping algorithm
-    QPolygonF inputPoly = target_poly;
-    QPolygonF outputPoly;
-
-    int dividerCount = divider_poly.size();
-    if (dividerCount < 3 || inputPoly.size() < 3)
-        return QPolygonF();
-
-    // Helper lambda: inside test for edge (clip edge from divider_poly)
-    auto inside = [](const QPointF& p, const QPointF& edgeStart, const QPointF& edgeEnd) {
-        // Returns true if p is on the left side of edge (edgeStart->edgeEnd)
-        return ((edgeEnd.x() - edgeStart.x()) * (p.y() - edgeStart.y()) -
-                (edgeEnd.y() - edgeStart.y()) * (p.x() - edgeStart.x())) >= 0.0;
-    };
-
-    // Helper lambda: compute intersection point of two lines (p1-p2 and q1-q2)
-    auto computeIntersection = [](const QPointF& p1, const QPointF& p2, const QPointF& q1,
-                                  const QPointF& q2) -> QPointF {
-        double a1 = p2.y() - p1.y();
-        double b1 = p1.x() - p2.x();
-        double c1 = a1 * p1.x() + b1 * p1.y();
-
-        double a2 = q2.y() - q1.y();
-        double b2 = q1.x() - q2.x();
-        double c2 = a2 * q1.x() + b2 * q1.y();
-
-        double det = a1 * b2 - a2 * b1;
-        if (std::fabs(det) < EPSILON_TINY)
-            return p2; // Lines are parallel, return p2 as fallback
-
-        double x = (b2 * c1 - b1 * c2) / det;
-        double y = (a1 * c2 - a2 * c1) / det;
-        return QPointF(x, y);
-    };
-
-    // For each edge of the divider (clip) polygon
-    for (int i = 0; i < dividerCount; ++i)
-    {
-        outputPoly.clear();
-        QPointF clipEdgeStart = divider_poly[i];
-        QPointF clipEdgeEnd = divider_poly[(i + 1) % dividerCount];
-
-        int inputCount = inputPoly.size();
-        if (inputCount == 0)
-            break;
-
-        for (int j = 0; j < inputCount; ++j)
-        {
-            QPointF curr = inputPoly[j];
-            QPointF prev = inputPoly[(j + inputCount - 1) % inputCount];
-            bool currInside = inside(curr, clipEdgeStart, clipEdgeEnd);
-            bool prevInside = inside(prev, clipEdgeStart, clipEdgeEnd);
-
-            if (currInside)
-            {
-                if (!prevInside)
-                {
-                    // Edge enters the clip region: add intersection
-                    QPointF intersect = computeIntersection(prev, curr, clipEdgeStart, clipEdgeEnd);
-                    outputPoly << intersect;
-                }
-                // Add current point
-                outputPoly << curr;
-            }
-            else if (prevInside)
-            {
-                // Edge exits the clip region: add intersection
-                QPointF intersect = computeIntersection(prev, curr, clipEdgeStart, clipEdgeEnd);
-                outputPoly << intersect;
-            }
-            // else: both outside, add nothing
-        }
-        inputPoly = outputPoly;
-    }
-
-    // Optionally, ensure closed polygon (Qt polygons are usually open, but close if needed)
-    if (!inputPoly.isEmpty() && inputPoly.first() != inputPoly.last())
-        inputPoly << inputPoly.first();
-
-    return inputPoly;
 }
 
 QList<QPair<QPolygonF, QString>>
@@ -313,7 +210,7 @@ PathPlanner::decomposedROI(QPolygonF& roi, QList<drone>& droneList, const Rotate
         return result;
 
     // Total area of ROI
-    double totalArea = calculatePolygonArea(roi);
+    double totalArea = geometry::shoelaceArea(roi);
 
     // Decompose using direct vector math
     double start = 0.0;
@@ -331,8 +228,8 @@ PathPlanner::decomposedROI(QPolygonF& roi, QList<drone>& droneList, const Rotate
         {
             double mid = (left + right) / 2.0;
             QPolygonF divider = makeRectPoly(mar, start, mid);
-            QPolygonF clipped = suth_hodgman_polygon_clipper(divider, roi);
-            double area = calculatePolygonArea(clipped);
+            QPolygonF clipped = geometry::sutherlandHodgmanClip(roi, divider);
+            double area = geometry::shoelaceArea(clipped);
             if (area < (targetArea - EPSILON_SMALL))
                 left = mid;
             else
@@ -341,10 +238,10 @@ PathPlanner::decomposedROI(QPolygonF& roi, QList<drone>& droneList, const Rotate
         end = (left + right) / 2.0;
 
         QPolygonF divider = makeRectPoly(mar, start, end);
-        QPolygonF polygon = suth_hodgman_polygon_clipper(divider, roi);
+        QPolygonF polygon = geometry::sutherlandHodgmanClip(roi, divider);
         qInfo() << "Divider for drone" << droneList[i].id << ":" << divider;
         qInfo() << "Clipped polygon for drone" << droneList[i].id << "vertices:" << polygon.size()
-                << "area:" << calculatePolygonArea(polygon);
+                << "area:" << geometry::shoelaceArea(polygon);
         result.append({polygon, QString::number(droneList[i].id)});
         start = end;
     }

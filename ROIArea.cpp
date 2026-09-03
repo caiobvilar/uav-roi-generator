@@ -3,6 +3,8 @@
 
 #include "ROIArea.h"
 #include "GDALHandler.h"
+#include "geometry/ConvexHull.h"
+#include "geometry/PolygonGeometry.h"
 #include "pathplanner.h"
 #include "utils.h"
 
@@ -11,7 +13,7 @@
 #include <QPainter>
 #include <qcontainerfwd.h>
 
-ROIArea::ROIArea(QWidget* parent) : QWidget(parent), grahamScanner(this), pathPlanner(this)
+ROIArea::ROIArea(QWidget* parent) : QWidget(parent), pathPlanner(this)
 {
     this->setMinimumHeight(WIDGET_MIN_HEIGHT);
     this->setMinimumWidth(WIDGET_MIN_WIDTH);
@@ -84,7 +86,7 @@ ROIArea::removeOverlay()
         showFinalPolygon = false;
         isPolygonDrawn = false;
         finalPolygon = QPolygonF();
-        grahamScanner.clear();
+        m_grahamPoints.clear();
         emit StatusMessageChanged(tr("Drawing disabled: add new layer"));
     }
 
@@ -151,7 +153,7 @@ ROIArea::closeImage()
     showFinalPolygon = false;
     isPolygonDrawn = false;
     finalPolygon = QPolygonF();
-    grahamScanner.clear();
+    m_grahamPoints.clear();
 
     // Create a new blank white image as background
     cleanOverlayStack();
@@ -199,7 +201,7 @@ ROIArea::keyPressEvent(QKeyEvent* event)
         showFinalPolygon = false;
         finalPolygon = QPolygonF();
         isPolygonDrawn = false;
-        grahamScanner.clear();
+        m_grahamPoints.clear();
         update(); // ensure widget repaints
         break;
 
@@ -209,7 +211,7 @@ ROIArea::keyPressEvent(QKeyEvent* event)
             writing = false;
             haveStartPoint = false;
 
-            finalPolygon = grahamScanner.ComputeHull();                             // must return QPolygonF
+            finalPolygon = geometry::convexHull(m_grahamPoints);                    // must return QPolygonF
             finalPolygon = snapPolygon(finalPolygon);                               // Snaps last point to the first
             showFinalPolygon = !finalPolygon.isEmpty() && finalPolygon.size() >= 3; // only if it’s a real polygon
             isPolygonDrawn = showFinalPolygon;
@@ -255,11 +257,11 @@ ROIArea::mousePressEvent(QMouseEvent* event)
             showFinalPolygon = false;
             isPolygonDrawn = false;
             finalPolygon = QPolygonF();
-            grahamScanner.clear();
+            m_grahamPoints.clear();
         }
 
         writing = true;
-        grahamScanner.addPointToPolygon(p); // image coords
+        m_grahamPoints.append(p); // image coords
         drawPointTo(p);                     // image coords
 
         if (!haveStartPoint)
@@ -278,7 +280,7 @@ ROIArea::mousePressEvent(QMouseEvent* event)
     else if (event->button() == Qt::RightButton && haveStartPoint)
     {
         QPointF snapped = startPoint;
-        grahamScanner.addPointToPolygon(snapped);
+        m_grahamPoints.append(snapped);
         drawLineTo(snapped);
         writing = false;
         haveStartPoint = false;
@@ -482,102 +484,6 @@ ROIArea::snapPolygon(const QPolygonF& polygon)
     return result;
 }
 
-// This could be improved using QVector2F for dot products
-// or maybe just to be more consistent with the rest of the math.
-double
-ROIArea::dot(const QPointF& a, const QPointF& b)
-{
-    return a.x() * b.x() + a.y() * b.y();
-}
-
-QPointF
-ROIArea::perp(const QPointF& v)
-{
-    return QPointF(-v.y(), v.x());
-}
-
-// hull: convex, CCW, size >= 3
-RotatedRect
-ROIArea::minimumAreaRectangle(const QList<QPointF>& hull)
-{
-    RotatedRect best{};
-    const int n = hull.size();
-    if (n < 3)
-        return best;
-
-    double bestArea = std::numeric_limits<double>::infinity();
-
-    for (int i = 0; i < n; ++i)
-    {
-        int i2 = (i + 1) % n;
-        QPointF edge = hull[i2] - hull[i];
-        double len = std::hypot(edge.x(), edge.y());
-        if (len == 0.0)
-            continue;
-
-        // Orthonormal basis for this orientation
-        QPointF ux(edge.x() / len, edge.y() / len);
-        QPointF uy = perp(ux);
-
-        // Project *all* hull points onto this basis
-        double minX = std::numeric_limits<double>::infinity();
-        double maxX = -std::numeric_limits<double>::infinity();
-        double minY = std::numeric_limits<double>::infinity();
-        double maxY = -std::numeric_limits<double>::infinity();
-
-        for (int k = 0; k < n; ++k)
-        {
-            const QPointF& p = hull[k];
-
-            // Project point onto the orthonormal basis (ux, uy)
-            double px = dot(p, ux); // coordinate along ux
-            double py = dot(p, uy); // coordinate along uy
-
-            if (px < minX)
-                minX = px;
-            if (px > maxX)
-                maxX = px;
-            if (py < minY)
-                minY = py;
-            if (py > maxY)
-                maxY = py;
-        }
-
-        double width = maxX - minX;
-        double height = maxY - minY;
-        if (width <= 0.0 || height <= 0.0)
-            continue;
-
-        double area = width * height;
-        if (area < bestArea)
-        {
-            bestArea = area;
-
-            best.ux = ux;
-            best.uy = uy;
-            best.width = width;
-            best.height = height;
-            best.angle = std::atan2(ux.y(), ux.x());
-
-            // Origin at (minX, minY) in world/image coords
-            best.origin = minX * ux + minY * uy;
-
-            // Optional axis‑aligned bounding rect
-            QPointF o = best.origin;
-            QPointF c1 = o + width * ux;
-            QPointF c2 = c1 + height * uy;
-            QPointF c3 = o + height * uy;
-            qreal minBx = std::min({o.x(), c1.x(), c2.x(), c3.x()});
-            qreal maxBx = std::max({o.x(), c1.x(), c2.x(), c3.x()});
-            qreal minBy = std::min({o.y(), c1.y(), c2.y(), c3.y()});
-            qreal maxBy = std::max({o.y(), c1.y(), c2.y(), c3.y()});
-            best.rect = QRectF(QPointF(minBx, minBy), QPointF(maxBx, maxBy));
-        }
-    }
-
-    return best;
-}
-
 void
 ROIArea::clearPolygon()
 {
@@ -591,7 +497,7 @@ ROIArea::clearPolygon()
     haveStartPoint = false;
 
     // Clear the Graham scan data
-    grahamScanner.clear();
+    m_grahamPoints.clear();
 
     removeOverlay();
     // Trigger repaint
@@ -781,7 +687,7 @@ ROIArea::calculateMinimumAreaRectangle()
 
     // Compute MAR in WGS84/projected coordinates (meters)
     // The hull is already in geo coordinates from polygonToGeo() above
-    ROIPolygonMinAreaRect = minimumAreaRectangle(hull);
+    ROIPolygonMinAreaRect = geometry::minimumAreaRectangle(hull);
 
     // Validate result is in WGS84
     if (!isRotatedRectWGS84(ROIPolygonMinAreaRect))
@@ -809,7 +715,7 @@ ROIArea::drawMinimumAreaRectangle()
     addOverlay(getOverlayStackTop().first, "Min Area Rect Overlay");
     QImage& overlayImage = getOverlayStackTop().first;
     // Rectangle in image coordinates
-    QPolygonF PixelMARPoly = rotatedRectToPolygon(ROIPolygonMinAreaRect);
+    QPolygonF PixelMARPoly = geometry::rotatedRectToPolygon(ROIPolygonMinAreaRect);
     QPolygonF box = gdalHandler.geoPolygonToPixels(PixelMARPoly);
     QPainter overlayPainter(&overlayImage);
     if (!overlayPainter.isActive())
@@ -847,27 +753,6 @@ ROIArea::drawMinimumAreaRectangle()
     emit StatusMessageChanged(msgPix);
 
     update(); // request repaint so paintEvent draws it
-}
-
-QPolygonF
-ROIArea::rotatedRectToPolygon(const RotatedRect& r)
-{
-    QPolygonF poly;
-    poly.reserve(4);
-
-    const QPointF& o = r.origin;
-    const QPointF& ux = r.ux;
-    const QPointF& uy = r.uy;
-    qreal w = r.width;
-    qreal h = r.height;
-
-    QPointF c0 = o;
-    QPointF c1 = o + w * ux;
-    QPointF c2 = c1 + h * uy;
-    QPointF c3 = o + h * uy;
-
-    poly << c0 << c1 << c2 << c3;
-    return poly;
 }
 
 void
