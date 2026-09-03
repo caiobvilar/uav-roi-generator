@@ -33,3 +33,11 @@ add_executable(test_labelplacer test_labelplacer.cpp
 target_include_directories(test_labelplacer PRIVATE ${CMAKE_SOURCE_DIR}/src)
 target_link_libraries(test_labelplacer PRIVATE Qt6::Core Qt6::Gui Qt6::Test)
 add_test(NAME labelplacer COMMAND test_labelplacer)
+
+# -- geojson (CRS reprojection regression) --
+add_executable(test_geojson test_geojson.cpp
+    ${CMAKE_SOURCE_DIR}/src/io/GeoJSON.cpp
+)
+target_include_directories(test_geojson PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(test_geojson PRIVATE Qt6::Core Qt6::Gui Qt6::Test GDAL::GDAL)
+add_test(NAME geojson COMMAND test_geojson)

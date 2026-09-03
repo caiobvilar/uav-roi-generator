@@ -232,12 +232,6 @@ MissionController::generateWaypoints(const RotatedRect& mar)
     return m_waypoints;
 }
 
-QList<Drone>
-MissionController::drones() const
-{
-    return m_drones;
-}
-
 QList<QPair<QPolygonF, QString>>
 MissionController::decomposed() const
 {
@@ -248,10 +242,4 @@ QList<QPair<Drone, QList<QPointF>>>
 MissionController::waypoints() const
 {
     return m_waypoints;
-}
-
-PathPlanner&
-MissionController::pathPlanner()
-{
-    return m_pathPlanner;
 }

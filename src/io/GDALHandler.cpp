@@ -1,5 +1,8 @@
 #include "io/GDALHandler.h"
 
+#include <cstring>
+#include <vector>
+
 #include <ogr_spatialref.h>
 
 GDALHandler::GDALHandler()

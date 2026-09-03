@@ -25,14 +25,10 @@ class MissionController : public QObject
     QList<QPair<Drone, QList<QPointF>>>
     generateWaypoints(const RotatedRect& mar);
 
-    QList<Drone>
-    drones() const;
     QList<QPair<QPolygonF, QString>>
     decomposed() const;
     QList<QPair<Drone, QList<QPointF>>>
     waypoints() const;
-    PathPlanner&
-    pathPlanner();
 
   signals:
     void
