@@ -31,7 +31,7 @@ class PathPlanner
         this->m_drones = list;
     }
 
-    QList<Drone>
+    const QList<Drone>&
     getDroneList() const
     {
         return this->m_drones;
@@ -40,7 +40,7 @@ class PathPlanner
     void
     setDecomposedROIs(const QList<QPair<QPolygonF, QString>>& decompROIs);
 
-    QList<QPair<QPolygonF, QString>>
+    const QList<QPair<QPolygonF, QString>>&
     getDecomposedROIs() const;
 
   private:

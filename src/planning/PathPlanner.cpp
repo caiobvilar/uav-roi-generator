@@ -26,7 +26,7 @@ PathPlanner::setDecomposedROIs(const QList<QPair<QPolygonF, QString>>& decompROI
     this->m_decomposed = decompROIs;
 }
 
-QList<QPair<QPolygonF, QString>>
+const QList<QPair<QPolygonF, QString>>&
 PathPlanner::getDecomposedROIs() const
 {
     return this->m_decomposed;

@@ -16,7 +16,6 @@ importPolygon(const QString& path)
 {
     QList<QPointF> pts;
 
-    GDALAllRegister();
     GDALDataset* poDS =
         static_cast<GDALDataset*>(GDALOpenEx(path.toUtf8().constData(), GDAL_OF_VECTOR, nullptr, nullptr, nullptr));
     if (!poDS)
