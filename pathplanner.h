@@ -3,47 +3,51 @@
 
 #include "domain/Drone.h"
 #include "domain/RotatedRect.h"
+#include "planning/IDecompositionStrategy.h"
+#include "planning/IWaypointGenerator.h"
 
 #include <QPair>
 #include <QPolygonF>
 #include <QString>
 #include <qlist.h>
 
+#include <memory>
+
 class PathPlanner
 {
   public:
-    PathPlanner() = default;
+    PathPlanner(std::unique_ptr<IDecompositionStrategy> dec,
+                std::unique_ptr<IWaypointGenerator> gen);
+
     QList<QPair<QPolygonF, QString>>
-    decomposedROI(QPolygonF& roi, QList<Drone>& droneList, const RotatedRect& mar);
+    decompose(const QPolygonF& roi, const QList<Drone>& drones, const RotatedRect& mar) const;
+
+    QList<QPointF>
+    generateWaypoints(const QPolygonF& subRoi, const Drone& d, const RotatedRect& mar) const;
 
     void
     setDroneList(QList<Drone> list)
     {
-        this->droneList = list;
+        this->m_drones = list;
     }
 
     QList<Drone>
-    getDroneList()
+    getDroneList() const
     {
-        return this->droneList;
+        return this->m_drones;
     }
 
     void
     setDecomposedROIs(const QList<QPair<QPolygonF, QString>>& decompROIs);
+
     QList<QPair<QPolygonF, QString>>
     getDecomposedROIs() const;
 
-    // Path planning algorithm - Compute waypoints using MAR-based sweep pattern
-    // Uses the Minimum Area Rectangle to bound waypoints within the sub-ROI
-    // Returns: list of waypoints that are guaranteed to be inside the polygon
-    QList<QPointF>
-    computeWaypointsWithMAR(const QPolygonF& area, double max_x_footprint, double max_y_footprint,
-                            const RotatedRect& mar);
-
-    QPolygonF RegionOfInterest;
-    QList<Drone> droneList;
-    QList<QPair<QPolygonF, QString>> decomposedPolygons;
+  private:
+    std::unique_ptr<IDecompositionStrategy> m_dec;
+    std::unique_ptr<IWaypointGenerator> m_gen;
+    QList<Drone> m_drones;
+    QList<QPair<QPolygonF, QString>> m_decomposed;
 };
-
 
 #endif // PATHPLANNER_H

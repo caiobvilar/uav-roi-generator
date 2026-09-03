@@ -21,6 +21,10 @@ qt_add_executable(ROIGenerator WIN32 MACOSX_BUNDLE
     io/GeoJSON.h io/GeoJSON.cpp
     mainwindow.h mainwindow.cpp mainwindow.ui
     pathplanner.h pathplanner.cpp
+    planning/IDecompositionStrategy.h
+    planning/IWaypointGenerator.h
+    planning/StripDecomposition.h planning/StripDecomposition.cpp
+    planning/BoustrophedonSweep.h planning/BoustrophedonSweep.cpp
     geometry/ConvexHull.h geometry/ConvexHull.cpp
     geometry/PolygonGeometry.h geometry/PolygonGeometry.cpp
     geometry/PolygonClipping.h geometry/PolygonClipping.cpp

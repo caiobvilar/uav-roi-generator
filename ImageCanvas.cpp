@@ -7,6 +7,8 @@
 #include "geometry/PolygonGeometry.h"
 #include "io/GeoJSON.h"
 #include "pathplanner.h"
+#include "planning/BoustrophedonSweep.h"
+#include "planning/StripDecomposition.h"
 #include "ui/ColorPalette.h"
 #include "ui/LabelPlacer.h"
 #include "utils.h"
@@ -16,7 +18,9 @@
 #include <QPainter>
 #include <qcontainerfwd.h>
 
-ImageCanvas::ImageCanvas(QWidget* parent) : QWidget(parent)
+ImageCanvas::ImageCanvas(QWidget* parent)
+    : QWidget(parent),
+      pathPlanner(std::make_unique<StripDecomposition>(), std::make_unique<BoustrophedonSweep>())
 {
     this->setMinimumHeight(constants::kWidgetMinHeight);
     this->setMinimumWidth(constants::kWidgetMinWidth);
@@ -831,7 +835,7 @@ ImageCanvas::decomposeROI()
     // Make a copy of the polygon and drone list for the decomposition
     QPolygonF roi = gdalHandler.polygonToGeo(m_finalPolygon);
     // Ensure polygon is in geo coordinates.
-    QList<QPair<QPolygonF, QString>> decomposed = pathPlanner.decomposedROI(roi, drones, ROIPolygonMinAreaRect);
+    QList<QPair<QPolygonF, QString>> decomposed = pathPlanner.decompose(roi, drones, ROIPolygonMinAreaRect);
 
     // Emit a message for each decomposed polygon's vertices
     for (int i = 0; i < decomposed.size(); ++i)
@@ -1079,7 +1083,7 @@ ImageCanvas::generateWaypointsPerDecomposedArea()
         // Generate waypoints using MAR-based sweep pattern
         // All inputs are now in METERS / WGS84 projected coordinates
         QList<QPointF> waypoints =
-            pathPlanner.computeWaypointsWithMAR(subROIWGS84, footprintX_m, footprintY_m, ROIPolygonMinAreaRect);
+            pathPlanner.generateWaypoints(subROIWGS84, associatedDrone, ROIPolygonMinAreaRect);
 
         if (waypoints.isEmpty())
         {
