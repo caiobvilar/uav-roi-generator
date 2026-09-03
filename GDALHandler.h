@@ -21,6 +21,9 @@ class GDALHandler
 {
   public:
     GDALHandler();
+    ~GDALHandler();
+    GDALHandler(const GDALHandler&) = delete;
+    GDALHandler& operator=(const GDALHandler&) = delete;
 
     bool
     openSrcRaster(const QString& fileName);
@@ -61,7 +64,6 @@ class GDALHandler
 
   private:
     GDALDataset* srcDataset = nullptr;
-    GDALDataset* destDataset = nullptr;
     double geoTransform[GEO_TRANSFORM_SIZE];
     QString dataSetCRSInfo = QString("NaN");
 };

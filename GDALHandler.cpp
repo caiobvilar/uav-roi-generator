@@ -21,6 +21,11 @@ GDALHandler::openSrcRaster(const QString& fileName)
     return true;
 }
 
+GDALHandler::~GDALHandler()
+{
+    closeRaster();
+}
+
 void
 GDALHandler::closeRaster()
 {
@@ -28,11 +33,6 @@ GDALHandler::closeRaster()
     {
         GDALClose(srcDataset);
         srcDataset = nullptr;
-    }
-    if (destDataset)
-    {
-        GDALClose(destDataset);
-        destDataset = nullptr;
     }
 }
 
