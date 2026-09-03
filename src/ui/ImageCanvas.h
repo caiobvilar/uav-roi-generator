@@ -6,7 +6,6 @@
 
 #include "io/GDALHandler.h"
 #include "planning/PathPlanner.h"
-#include "ui_interfaces.h"
 #include "domain/RotatedRect.h"
 #include "domain/Drone.h"
 
@@ -24,7 +23,7 @@
 #include <QWidget>
 #include <qcontainerfwd.h>
 
-class ImageCanvas : public QWidget, public IImageDocument, public IRoiProvider, public IMissionExporter
+class ImageCanvas : public QWidget
 {
     Q_OBJECT
 
@@ -33,21 +32,13 @@ class ImageCanvas : public QWidget, public IImageDocument, public IRoiProvider, 
     QByteArray
     exportPolygonGeoJSON() const;
     bool
-    openImage(const QString& fileName) override;
+    openImage(const QString& fileName);
     bool
-    closeImage() override;
+    closeImage();
     bool
-    saveImage(const QString& fileName, const char* fileFormat) override;
+    saveImage(const QString& fileName, const char* fileFormat);
     void
     setPenColor(const QColor& newColor);
-
-    // IImageDocument / IRoiProvider / IMissionExporter helpers
-    QPolygonF
-    finalPolygon() const override;
-    RotatedRect
-    mar() const override;
-    QByteArray
-    exportGeoJSON() const override;
 
     bool
     isModified() const

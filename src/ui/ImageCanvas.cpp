@@ -37,24 +37,6 @@ ImageCanvas::ImageCanvas(QWidget* parent)
     m_finalPolygon = QPolygonF();
 }
 
-QPolygonF
-ImageCanvas::finalPolygon() const
-{
-    return m_finalPolygon;
-}
-
-RotatedRect
-ImageCanvas::mar() const
-{
-    return ROIPolygonMinAreaRect;
-}
-
-QByteArray
-ImageCanvas::exportGeoJSON() const
-{
-    return exportPolygonGeoJSON();
-}
-
 void
 ImageCanvas::addOverlay(const QImage& baseImage, const QString& overlayLabel)
 {
@@ -618,7 +600,6 @@ ImageCanvas::saveGEOJson(QByteArray& document)
 QList<QPointF>
 ImageCanvas::openGeoJSONFilePoints(const QString& filename)
 {
-    qInfo() << Q_FUNC_INFO << "IS THIS BEING CALLED AT ALL?????";
     return geo::importPolygon(filename);
 }
 
@@ -672,12 +653,6 @@ ImageCanvas::drawGeoPolygonOnCurrentOverlay(const QList<QPointF>& geoPts)
         qDebug() << "Polygon completely outside image bounds -> not visible";
         return; // early‑out so you know it's off‑image
     }
-
-    // Optionally log first few vertices
-    for (int i = 0; i < pixPoly.size() && i < 5; ++i)
-        qDebug() << "pix" << i << pixPoly.at(i);
-    for (int i = 0; i < pixPoly.size() && i < 3; ++i)
-        qDebug() << "pix" << i << pixPoly.at(i);
 
     QPainter p(&img);
     if (!p.isActive())

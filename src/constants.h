@@ -15,6 +15,7 @@ inline constexpr int    kPenWidthThick    = 4;
 inline constexpr int    kAlphaSubroiFill  = 50;
 inline constexpr int    kAlphaRoiOutline  = 80;
 inline constexpr int    kAlphaLabelBg     = 180;
+inline constexpr int    kLightBackgroundValue = 180;
 inline constexpr double kZoomStep         = 1.001;
 inline constexpr double kZoomMin          = 0.1;
 inline constexpr double kZoomMax          = 20.0;

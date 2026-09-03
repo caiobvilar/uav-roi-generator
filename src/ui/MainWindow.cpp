@@ -52,7 +52,7 @@ MainWindow::onOpenFileTriggered()
 void
 MainWindow::onAddLayerTriggered()
 {
-    ui->roiArea->addOverlay(ui->roiArea->getOverlayStackTop().first, "ROIArea");
+    ui->roiArea->addOverlay(ui->roiArea->getOverlayStackTop().first, "Layer");
 }
 
 void

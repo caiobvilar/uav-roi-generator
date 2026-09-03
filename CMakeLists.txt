@@ -9,12 +9,11 @@ set(CMAKE_AUTOMOC ON)
 set(CMAKE_AUTOUIC ON)
 set(CMAKE_AUTORCC ON)
 
-set_property(SOURCE src/ui/ImageCanvas.h src/ui_interfaces.h PROPERTY SKIP_AUTOUIC TRUE)
+set_property(SOURCE src/ui/ImageCanvas.h PROPERTY SKIP_AUTOUIC TRUE)
 
 qt_add_executable(ROIGenerator WIN32 MACOSX_BUNDLE
     src/main.cpp
     src/ui/ImageCanvas.h src/ui/ImageCanvas.cpp
-    src/ui_interfaces.h
     src/ui/LabelPlacer.h src/ui/LabelPlacer.cpp
     src/ui/ColorPalette.h src/ui/ColorPalette.cpp
     src/io/GDALHandler.h src/io/GDALHandler.cpp

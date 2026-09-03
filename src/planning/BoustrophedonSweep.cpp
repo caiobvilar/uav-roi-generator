@@ -36,7 +36,7 @@ BoustrophedonSweep::generate(const QPolygonF& area, const Drone& d, const Rotate
 
     // === COORDINATE SYSTEM VALIDATION ===
     // Ensure polygon and MAR are in the same coordinate system (both WGS84)
-    if (!domain::validateCoordinateSystemMatch(area, mar, "computeWaypointsWithMAR"))
+    if (!domain::validateCoordinateSystemMatch(area, mar, "BoustrophedonSweep"))
     {
         qCritical() << "Aborting waypoint generation due to coordinate system mismatch";
         return waypoints;
@@ -52,7 +52,7 @@ BoustrophedonSweep::generate(const QPolygonF& area, const Drone& d, const Rotate
 
     // === UNIT VALIDATION ===
     // Ensure footprint values are in meters (not centimeters)
-    if (!domain::validateFootprintMeters(max_x_footprint, max_y_footprint, "computeWaypointsWithMAR"))
+    if (!domain::validateFootprintMeters(max_x_footprint, max_y_footprint, "BoustrophedonSweep"))
     {
         qCritical() << "Aborting waypoint generation due to unit mismatch";
         qCritical() << "  Hint: Convert cm to meters by dividing by 100";
@@ -66,7 +66,7 @@ BoustrophedonSweep::generate(const QPolygonF& area, const Drone& d, const Rotate
                    << "). Verify units are in meters.";
     }
 
-    qInfo() << "=== computeWaypointsWithMAR: Input validation PASSED ===";
+    qInfo() << "=== BoustrophedonSweep: Input validation PASSED ===";
     qInfo() << "  Polygon: WGS84, " << area.size() << " vertices";
     qInfo() << "  Footprint (m): X=" << max_x_footprint << " Y=" << max_y_footprint;
     qInfo() << "  MAR origin:" << mar.origin << " width:" << mar.width << "m height:" << mar.height << "m";

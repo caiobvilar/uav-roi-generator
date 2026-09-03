@@ -2,6 +2,8 @@
 
 #include <QVector>
 #include <QtGlobal>
+#include <QtMath>
+#include <cmath>
 
 LabelPlacer::LabelPlacer(qreal imageWidth, qreal imageHeight, qreal margin, qreal rotationDeg)
     : m_imageWidth(imageWidth), m_imageHeight(imageHeight), m_margin(margin), m_rotationDeg(rotationDeg)
@@ -63,9 +65,8 @@ LabelPlacer::place(const QRectF& bbox, const QString& text, const QFontMetrics& 
     labelPt.setX(qBound(2.0, labelPt.x(), qreal(imgW - textWidth - 2)));
     labelPt.setY(qBound(qreal(textHeight + 2), labelPt.y(), qreal(imgH - 2)));
 
-    // Record this label's bounding rect (approximate for rotated text)
-    QRectF labelRect(labelPt.x() - 2, labelPt.y() - textHeight - 2, textWidth + 4, textHeight + 4);
-    m_placedLabels.append(labelRect);
+    // Record this label's rotated axis-aligned bounding box
+    m_placedLabels.append(rotatedFootprint(labelPt, textWidth, textHeight));
 
     return labelPt;
 }
@@ -120,17 +121,36 @@ LabelPlacer::overlapsPlaced(const QRectF& rect) const
 bool
 LabelPlacer::isValid(const QPointF& pt, const QString& text, const QFontMetrics& fm, QRectF* outRect) const
 {
-    const int textWidth = fm.horizontalAdvance(text);
-    const int textHeight = fm.height();
+    const qreal textWidth = fm.horizontalAdvance(text);
+    const qreal textHeight = fm.height();
 
-    QRectF labelRect(pt.x() - 2, pt.y() - textHeight, textWidth + 4, textHeight + 4);
-    const bool valid = pt.x() >= 0 && pt.x() + textWidth <= m_imageWidth && pt.y() - textHeight >= 0 &&
-                       pt.y() <= m_imageHeight && !overlapsPlaced(labelRect);
+    const QRectF labelRect = rotatedFootprint(pt, textWidth, textHeight);
+
+    const bool valid = labelRect.left() >= 0 && labelRect.top() >= 0 && labelRect.right() <= m_imageWidth &&
+                       labelRect.bottom() <= m_imageHeight && !overlapsPlaced(labelRect);
 
     if (outRect)
         *outRect = labelRect;
 
     return valid;
+}
+
+QRectF
+LabelPlacer::rotatedFootprint(const QPointF& anchor, qreal textWidth, qreal textHeight) const
+{
+    const double theta = qDegreesToRadians(m_rotationDeg);
+    const double c = std::cos(theta);
+    const double s = std::sin(theta);
+
+    const double halfW = (std::fabs(textWidth * c) + std::fabs(textHeight * s)) / 2.0;
+    const double halfH = (std::fabs(textWidth * s) + std::fabs(textHeight * c)) / 2.0;
+
+    // Center of the label's local rect (x in [0, textWidth], y in [-textHeight, 0])
+    const double centerX = (textWidth / 2.0) * c - (-textHeight / 2.0) * s;
+    const double centerY = (textWidth / 2.0) * s + (-textHeight / 2.0) * c;
+    const QPointF center(anchor.x() + centerX, anchor.y() + centerY);
+
+    return QRectF(center.x() - halfW, center.y() - halfH, 2.0 * halfW, 2.0 * halfH);
 }
 
 void

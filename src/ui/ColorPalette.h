@@ -10,7 +10,6 @@ namespace color {
 
 QColor analyzeBackgroundColor(const QImage& image, const QRectF& region = QRectF());
 QVector<QColor> generateContrastingPalette(const QColor& backgroundColor, int numColors);
-QColor getContrastingTextColor(const QColor& backgroundColor);
 
 } // namespace color
 

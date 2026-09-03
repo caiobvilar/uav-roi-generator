@@ -74,7 +74,7 @@ generateContrastingPalette(const QColor& backgroundColor, int numColors)
     // For very light backgrounds, use darker saturated colors
     if (bgLuminance > 0.7)
     {
-        targetValue = constants::kAlphaLabelBg;
+        targetValue = constants::kLightBackgroundValue;
         targetSaturation = 255;
     }
 
@@ -122,21 +122,6 @@ generateContrastingPalette(const QColor& backgroundColor, int numColors)
     }
 
     return palette;
-}
-
-QColor
-getContrastingTextColor(const QColor& backgroundColor)
-{
-    // Calculate luminance
-    double luminance =
-        0.2126 * backgroundColor.redF() + 0.7152 * backgroundColor.greenF() + 0.0722 * backgroundColor.blueF();
-
-    // Return white for dark backgrounds, black for light backgrounds
-    // Using WCAG recommended threshold
-    if (luminance < 0.5)
-        return QColor(255, 255, 255); // White
-    else
-        return QColor(0, 0, 0); // Black
 }
 
 } // namespace color

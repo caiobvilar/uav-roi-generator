@@ -13,7 +13,6 @@ struct RotatedRect
     QPointF uy;     // unit vector along height (y‑axis of rect)
     qreal width;
     qreal height;
-    // orientation of the box in radians
 };
 
 #endif // DOMAIN_ROTATEDRECT_H

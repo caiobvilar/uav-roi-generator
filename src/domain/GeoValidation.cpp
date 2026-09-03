@@ -21,21 +21,6 @@ isPolygonWGS84(const QPolygonF& poly)
     return countWGS84 > poly.size() / 2;
 }
 
-// Checks if most points are within the given widget's pixel bounds
-bool
-isPolygonPixel(const QPolygonF& poly, int width, int height)
-{
-    if (poly.isEmpty())
-        return false;
-    int countPixel = 0;
-    for (const QPointF& pt : poly)
-    {
-        if (pt.x() >= 0 && pt.x() < width && pt.y() >= 0 && pt.y() < height)
-            countPixel++;
-    }
-    return countPixel > poly.size() / 2;
-}
-
 // Check if a RotatedRect is in WGS84/projected coordinates (large values typical of UTM)
 bool
 isRotatedRectWGS84(const RotatedRect& rect)
