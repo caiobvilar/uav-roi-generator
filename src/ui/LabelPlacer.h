@@ -21,7 +21,7 @@ class LabelPlacer
   private:
     QList<QPointF> candidates(const QRectF&, const QString&, const QFontMetrics&) const;
     bool overlapsPlaced(const QRectF&) const;
-    bool isValid(const QPointF&, const QString&, const QFontMetrics&, QRectF*) const;
+    bool isValid(const QPointF&, const QString&, const QFontMetrics&) const;
     QRectF rotatedFootprint(const QPointF& anchor, qreal textWidth, qreal textHeight) const;
     qreal m_imageWidth;
     qreal m_imageHeight;
