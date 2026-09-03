@@ -22,6 +22,11 @@ importPolygon(const QString& path)
         return pts;
 
     OGRLayer* layer = poDS->GetLayer(0);
+    if (!layer)
+    {
+        GDALClose(poDS);
+        return pts;
+    }
     OGRFeature* feat = layer->GetNextFeature();
     if (!feat)
     {
@@ -39,6 +44,12 @@ importPolygon(const QString& path)
 
     auto* poly = geom->toPolygon();
     OGRLinearRing* ring = poly->getExteriorRing();
+    if (!ring)
+    {
+        OGRFeature::DestroyFeature(feat);
+        GDALClose(poDS);
+        return pts;
+    }
     int n = ring->getNumPoints();
     pts.reserve(n);
     for (int i = 0; i < n; ++i)
