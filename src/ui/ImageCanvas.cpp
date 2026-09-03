@@ -6,9 +6,6 @@
 #include "geometry/ConvexHull.h"
 #include "geometry/PolygonGeometry.h"
 #include "io/GeoJSON.h"
-#include "planning/PathPlanner.h"
-#include "planning/BoustrophedonSweep.h"
-#include "planning/StripDecomposition.h"
 #include "ui/ColorPalette.h"
 #include "ui/LabelPlacer.h"
 #include "constants.h"
@@ -20,8 +17,7 @@
 #include <qcontainerfwd.h>
 
 ImageCanvas::ImageCanvas(QWidget* parent)
-    : QWidget(parent),
-      pathPlanner(std::make_unique<StripDecomposition>(), std::make_unique<BoustrophedonSweep>())
+    : QWidget(parent)
 {
     this->setMinimumHeight(constants::kWidgetMinHeight);
     this->setMinimumWidth(constants::kWidgetMinWidth);
@@ -765,82 +761,10 @@ ImageCanvas::drawMinimumAreaRectangle()
 }
 
 void
-ImageCanvas::openDroneFile(const QString& filename)
+ImageCanvas::showDecomposedROI(const QList<QPair<QPolygonF, QString>>& decomposed)
 {
-    QList<Drone> listOfDrones = domain::parseDrones(filename);
-    pathPlanner.setDroneList(listOfDrones);
-}
-
-QList<Drone>
-ImageCanvas::calculateDroneCapabilities()
-{
-    QList<Drone> drones = pathPlanner.getDroneList();
-
-    if (drones.isEmpty())
-    {
-        qWarning() << "No drones loaded. Please load drone info first.";
-        return drones;
-    }
-
-    domain::calcFlightAltitude(drones);
-    domain::calcDroneCameraFootprint(drones);
-    domain::calcMaximumForwardVelocity(drones);
-    domain::calcDroneRelativeCapability(drones);
-
-    pathPlanner.setDroneList(drones);
-    return drones;
-}
-
-void
-ImageCanvas::decomposeROI()
-{
-    // Use the current m_finalPolygon as the ROI
-    if (m_finalPolygon.size() < 3)
-    {
-        qWarning() << "No valid ROI polygon to decompose.";
-        return;
-    }
-
-    QList<Drone> drones = pathPlanner.getDroneList();
-    if (drones.isEmpty())
-    {
-        qWarning() << "No drones loaded for decomposition.";
-        return;
-    }
-
-    // Make a copy of the polygon and drone list for the decomposition
-    QPolygonF roi = gdalHandler.polygonToGeo(m_finalPolygon);
-    // Ensure polygon is in geo coordinates.
-    QList<QPair<QPolygonF, QString>> decomposed = pathPlanner.decompose(roi, drones, ROIPolygonMinAreaRect);
-
-    // Emit a message for each decomposed polygon's vertices
-    for (int i = 0; i < decomposed.size(); ++i)
-    {
-        const QPolygonF& poly = decomposed[i].first;
-        QStringList pts;
-        for (const QPointF& pt : poly)
-            pts << QString("(%1, %2)").arg(pt.x(), 0, 'f', 2).arg(pt.y(), 0, 'f', 2);
-        QString msg = QString("Decomposed[%1] DroneID=%2: %3").arg(i).arg(decomposed[i].second).arg(pts.join(", "));
-        emit StatusMessageChanged(msg);
-    }
-
-    pathPlanner.setDecomposedROIs(decomposed);
-    // You can now use 'decomposed' as needed, e.g., store, draw, or emit a signal
-    qInfo() << "Decomposed ROI into" << decomposed.size() << "sub-polygons.";
-}
-
-void
-ImageCanvas::showDecomposedROI()
-{
-    QList<Drone> drones = pathPlanner.getDroneList();
-    if (drones.isEmpty())
-    {
-        qInfo() << "No drones loaded for decomposition.";
-        return;
-    }
     QPolygonF pixelSpacePolygon = QPolygonF();
 
-    QList<QPair<QPolygonF, QString>> decomposed = pathPlanner.getDecomposedROIs();
     cleanToOpenImage();
     addOverlay(getOverlayStackTop().first, "ROI Decomposition");
 
@@ -918,173 +842,9 @@ ImageCanvas::showDecomposedROI()
 }
 
 void
-ImageCanvas::generateWaypointsPerDecomposedArea()
+ImageCanvas::showWaypoints(const QList<QPair<Drone, QList<QPointF>>>& waypoints)
 {
-    auto decomposedPairs = pathPlanner.getDecomposedROIs();
-    if (decomposedPairs.isEmpty())
-    {
-        qWarning() << "No decomposed ROIs available for waypoint generation.";
-        emit StatusMessageChanged(
-            tr("<font color='red'>[WARNING]: No decomposed ROIs available for waypoint generation.</font>"));
-        return;
-    }
-
-    auto drones = pathPlanner.getDroneList();
-    if (drones.isEmpty())
-    {
-        qWarning() << "No drones available for waypoint generation.";
-        emit StatusMessageChanged(
-            tr("<font color='red'>[WARNING]: No drones available for waypoint generation.</font>"));
-        return;
-    }
-
-    // === VALIDATE MAR IS IN WGS84 COORDINATES ===
-    if (!domain::isRotatedRectWGS84(ROIPolygonMinAreaRect))
-    {
-        qCritical() << "ERROR: ROIPolygonMinAreaRect is not in WGS84 coordinates!";
-        qCritical() << "  Origin:" << ROIPolygonMinAreaRect.origin;
-        qCritical() << "  Call calculateMinimumAreaRectangle() first with a geo-converted polygon.";
-        emit StatusMessageChanged(tr("<font color='red'>[CRITICAL]: MAR not in WGS84 coordinates! Call "
-                                     "calculateMinimumAreaRectangle() first.</font>"));
-        return;
-    }
-
-    allWaypointsPerDrone.clear();
-
-    for (const auto& pair : decomposedPairs)
-    {
-        const QPolygonF& subROI = pair.first;
-        const QString& droneId = pair.second;
-
-        if (subROI.size() < 3)
-        {
-            qWarning() << "Sub-ROI for drone" << droneId << "has less than 3 vertices, skipping.";
-            emit StatusMessageChanged(
-                tr("<font color='red'>[WARNING]: Sub-ROI for drone %1 has &lt;3 vertices, skipping.</font>")
-                    .arg(droneId));
-            continue;
-        }
-
-        // Ensure polygon is in geo coordinates (WGS84)
-        QPolygonF subROIWGS84 = subROI;
-        if (!domain::isPolygonWGS84(subROI))
-        {
-            qInfo() << "Converting sub-ROI from pixel to WGS84 for drone" << droneId;
-            emit StatusMessageChanged(tr("[INFO]: Converting sub-ROI to WGS84 coordinates for drone %1").arg(droneId));
-            subROIWGS84 = gdalHandler.polygonToGeo(subROI);
-
-            // Verify conversion succeeded
-            if (!domain::isPolygonWGS84(subROIWGS84))
-            {
-                qCritical() << "ERROR: Failed to convert sub-ROI to WGS84 for drone" << droneId;
-                emit StatusMessageChanged(
-                    tr("<font color='red'>[CRITICAL]: Failed to convert sub-ROI to WGS84 for drone %1</font>")
-                        .arg(droneId));
-                continue;
-            }
-        }
-
-        // Find the drone associated with this sub-ROI
-        Drone associatedDrone;
-        bool droneFound = false;
-        uint32_t droneIdNum = droneId.toUInt();
-        for (const auto& d : drones)
-        {
-            if (d.id == droneIdNum)
-            {
-                associatedDrone = d;
-                droneFound = true;
-                break;
-            }
-        }
-
-        if (!droneFound)
-        {
-            qWarning() << "Drone with ID" << droneId << "not found in drone list, skipping sub-ROI.";
-            emit StatusMessageChanged(
-                tr("<font color='red'>[WARNING]: Drone ID %1 not found in drone list, skipping.</font>").arg(droneId));
-            continue;
-        }
-
-        // === FOOTPRINT VALIDATION (already in SI units - meters) ===
-        // All drone parameters are now in SI units from drones.json
-        // Footprint values should be reasonable for drone imagery (1m - 500m typical)
-        double footprintX_m = associatedDrone.max_x_footprint;
-        double footprintY_m = associatedDrone.max_y_footprint;
-
-        if (footprintX_m <= 0.0 || footprintY_m <= 0.0)
-        {
-            qCritical() << "Footprint values are zero or negative for drone" << associatedDrone.id;
-            emit StatusMessageChanged(
-                tr("<font color='red'>[CRITICAL]: Drone %1 has invalid footprint (X=%2m, Y=%3m)</font>")
-                    .arg(associatedDrone.id)
-                    .arg(footprintX_m, 0, 'f', 2)
-                    .arg(footprintY_m, 0, 'f', 2));
-            continue;
-        }
-
-        qInfo() << "Drone" << associatedDrone.id << "footprint (SI units):";
-        qInfo() << "  L_x:" << footprintX_m << "m";
-        qInfo() << "  L_y:" << footprintY_m << "m";
-
-        // Sanity check: footprint in meters should be reasonable (1m - 500m typical for drones)
-        if (footprintX_m < 1.0 || footprintX_m > 500.0 || footprintY_m < 1.0 || footprintY_m > 500.0)
-        {
-            qWarning() << "Warning: Footprint values seem unusual for drone" << associatedDrone.id;
-            qWarning() << "  Expected range: 1-500 meters, got X=" << footprintX_m << " Y=" << footprintY_m;
-            emit StatusMessageChanged(
-                tr("<font color='orange'>[WARNING]: Drone %1 footprint unusual (X=%2m, Y=%3m) - expected 1-500m</font>")
-                    .arg(associatedDrone.id)
-                    .arg(footprintX_m, 0, 'f', 1)
-                    .arg(footprintY_m, 0, 'f', 1));
-        }
-
-        // === COORDINATE SYSTEM VALIDATION before calling PathPlanner ===
-        if (!domain::validateCoordinateSystemMatch(subROIWGS84, ROIPolygonMinAreaRect, "generateWaypointsPerDecomposedArea"))
-        {
-            emit StatusMessageChanged(tr("<font color='red'>[CRITICAL]: Coordinate system mismatch for drone %1 - "
-                                         "sub-ROI and MAR must both be WGS84</font>")
-                                          .arg(associatedDrone.id));
-            continue;
-        }
-
-        if (!domain::validateFootprintMeters(footprintX_m, footprintY_m, "generateWaypointsPerDecomposedArea"))
-        {
-            emit StatusMessageChanged(
-                tr("<font color='red'>[CRITICAL]: Unit mismatch - footprint not in meters for drone %1</font>")
-                    .arg(associatedDrone.id));
-            continue;
-        }
-
-        // Generate waypoints using MAR-based sweep pattern
-        // All inputs are now in METERS / WGS84 projected coordinates
-        QList<QPointF> waypoints =
-            pathPlanner.generateWaypoints(subROIWGS84, associatedDrone, ROIPolygonMinAreaRect);
-
-        if (waypoints.isEmpty())
-        {
-            emit StatusMessageChanged(
-                tr("<font color='red'>[WARNING]: No waypoints generated for drone %1 - check input validation</font>")
-                    .arg(associatedDrone.id));
-        }
-        else
-        {
-            emit StatusMessageChanged(
-                tr("[INFO]: Drone %1 generated %2 waypoints").arg(associatedDrone.id).arg(waypoints.size()));
-        }
-
-        qInfo() << "Drone" << associatedDrone.id << "has" << waypoints.size() << "waypoints for sub-ROI";
-
-        allWaypointsPerDrone.append(qMakePair(associatedDrone, waypoints));
-    }
-
-    emit StatusMessageChanged(QString("Generated waypoints for %1 sub-ROIs").arg(allWaypointsPerDrone.size()));
-}
-
-void
-ImageCanvas::showWaypoints()
-{
-    if (allWaypointsPerDrone.isEmpty())
+    if (waypoints.isEmpty())
     {
         qWarning() << "No waypoints to display. Run generateWaypointsPerDecomposedArea() first.";
         emit StatusMessageChanged(tr("<font color='red'>[WARNING]: No waypoints to display. Run "
@@ -1108,7 +868,7 @@ ImageCanvas::showWaypoints()
 
     // Analyze background and generate contrasting palette
     QColor bgColor = color::analyzeBackgroundColor(overlayImage);
-    QVector<QColor> palette = color::generateContrastingPalette(bgColor, qMax(allWaypointsPerDrone.size(), 16));
+    QVector<QColor> palette = color::generateContrastingPalette(bgColor, qMax(waypoints.size(), 16));
 
     qInfo() << "Background color analyzed:" << bgColor.name()
             << "Luminance:" << (0.2126 * bgColor.redF() + 0.7152 * bgColor.greenF() + 0.0722 * bgColor.blueF())
@@ -1120,7 +880,7 @@ ImageCanvas::showWaypoints()
     int colorIdx = 0;
     int totalWaypointsDrawn = 0;
 
-    for (const auto& dronePair : allWaypointsPerDrone)
+    for (const auto& dronePair : waypoints)
     {
         const Drone& d = dronePair.first;
         const QList<QPointF>& waypoints = dronePair.second;
@@ -1224,6 +984,6 @@ ImageCanvas::showWaypoints()
     update();
     emit StatusMessageChanged(QString("[INFO]: Displayed %1 waypoints for %2 drones")
                                   .arg(totalWaypointsDrawn)
-                                  .arg(allWaypointsPerDrone.size()));
+                                  .arg(waypoints.size()));
 }
 

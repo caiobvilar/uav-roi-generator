@@ -29,6 +29,7 @@ qt_add_executable(ROIGenerator WIN32 MACOSX_BUNDLE
     src/geometry/PolygonClipping.h src/geometry/PolygonClipping.cpp
     src/domain/Drone.h src/domain/Drone.cpp
     src/domain/GeoValidation.h src/domain/GeoValidation.cpp
+    src/mission/MissionController.h src/mission/MissionController.cpp
 )
 
 target_compile_options(ROIGenerator PRIVATE -Wall -Wextra -Wpedantic)

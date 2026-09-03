@@ -1,6 +1,8 @@
 #ifndef MAINWINDOW_H
 #define MAINWINDOW_H
 
+#include "mission/MissionController.h"
+
 #include <QMainWindow>
 
 namespace Ui
@@ -33,8 +35,6 @@ class MainWindow : public QMainWindow
     void
     onSaveDrawnAreaTriggeredWGS84();
     void
-    onOpenGeoJSONAndDrawOnOverlayTriggered();
-    void
     onCalculateMinAreaRectTriggered();
     void
     onOpenDroneInfo();
@@ -53,6 +53,7 @@ class MainWindow : public QMainWindow
 
   private:
     Ui::MainWindow* ui;
+    MissionController m_controller;
 };
 
 #endif // MAINWINDOW_H

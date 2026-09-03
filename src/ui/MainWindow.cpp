@@ -1,18 +1,16 @@
 #include "ui/MainWindow.h"
 #include "geometry/PolygonGeometry.h"
-#include "planning/PathPlanner.h"
 #include "ui_mainwindow.h"
 #include <QApplication>
 #include <QCloseEvent>
 #include <QColorDialog>
 #include <QFileDialog>
 #include <QImageWriter>
-#include <QInputDialog>
 #include <QMenuBar>
 #include <QMessageBox>
 #include <QStandardItemModel>
 
-MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent), ui(new Ui::MainWindow)
+MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent), ui(new Ui::MainWindow), m_controller(this)
 {
     ui->setupUi(this);
     setWindowTitle("ROIGenerator");
@@ -32,6 +30,9 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent), ui(new Ui::MainWi
     connect(ui->actionDecompose_ROI, &QAction::triggered, this, &MainWindow::onDecomposeROI);
     connect(ui->actionShow_Decomposed_ROI, &QAction::triggered, this, &MainWindow::onShowDecomposedROI);
     connect(ui->actionWaypoints, &QAction::triggered, this, &MainWindow::onCalculateWaypoints);
+
+    connect(&m_controller, &MissionController::statusMessageChanged, this,
+            &MainWindow::on_roiArea_StatusMessageChanged);
 }
 
 MainWindow::~MainWindow()
@@ -96,24 +97,6 @@ MainWindow::onOpenGeoJSONFileTriggered()
 }
 
 void
-MainWindow::onOpenGeoJSONAndDrawOnOverlayTriggered()
-{
-    QString fileName = QFileDialog::getOpenFileName(this, tr("Open GeoJSON polygon"), QString(),
-                                                    tr("GeoJSON (*.geojson *.json);;All files (*.*)"));
-    if (fileName.isEmpty())
-        return;
-
-    QList<QPointF> pts = ui->roiArea->openGeoJSONFilePoints(fileName);
-    if (pts.isEmpty())
-        return;
-
-    // Ensure an overlay exists and becomes current
-    ui->roiArea->addOverlay(ui->roiArea->getOverlayStackTop().first, "GeoJSON");
-    // Draw into the current overlay
-    ui->roiArea->drawGeoPolygonOnCurrentOverlay(pts);
-}
-
-void
 MainWindow::onCalculateMinAreaRectTriggered()
 {
     ui->roiArea->calculateMinimumAreaRectangle();
@@ -127,14 +110,14 @@ MainWindow::onOpenDroneInfo()
         QFileDialog::getOpenFileName(this, tr("Open Drone Info"), QString(), tr("JSON (*.json);;All files (*.*)"));
 
     if (!fileName.isEmpty())
-        ui->roiArea->openDroneFile(fileName);
+        m_controller.loadDrones(fileName);
     onCalculateDroneCapabilities();
 }
 
 void
 MainWindow::onCalculateDroneCapabilities()
 {
-    QList<Drone> drones = ui->roiArea->calculateDroneCapabilities();
+    QList<Drone> drones = m_controller.calculateCapabilities();
 
     if (drones.isEmpty())
     {
@@ -222,18 +205,9 @@ MainWindow::onCalculateDroneCapabilities()
 void
 MainWindow::onDecomposeROI()
 {
-    QPolygonF roi = ui->roiArea->getFinalPolygon(); // or however you access it
-    qInfo() << "ROI size:" << roi.size() << "Points:" << roi;
-    RotatedRect mar = ui->roiArea->getROIPolygonMinAreaRect(); // or similar
-    qInfo() << "MAR origin:" << mar.origin << "width:" << mar.width << "height:" << mar.height;
-    QList<Drone> drones = ui->roiArea->getPathPlanner().getDroneList();
-    for (const Drone& d : drones)
-        qInfo() << "Drone" << d.id << "capability:" << d.relative_capability_score;
-    ui->roiArea->decomposeROI();
+    m_controller.decompose(ui->roiArea->finalPolygonGeo(), ui->roiArea->getROIPolygonMinAreaRect());
 
-    // Get the decomposed polygons from roiArea's pathPlanner
-    QList<QPair<QPolygonF, QString>> decomposed = ui->roiArea->getPathPlanner().getDecomposedROIs();
-
+    QList<QPair<QPolygonF, QString>> decomposed = m_controller.decomposed();
 
     int idx = 0;
     for (const auto& pair : decomposed)
@@ -254,7 +228,7 @@ MainWindow::onDecomposeROI()
 void
 MainWindow::onShowDecomposedROI()
 {
-    ui->roiArea->showDecomposedROI();
+    ui->roiArea->showDecomposedROI(m_controller.decomposed());
 }
 
 void
@@ -273,6 +247,6 @@ MainWindow::on_roiArea_StatusMessageChanged(const QString& text)
 void
 MainWindow::onCalculateWaypoints()
 {
-    ui->roiArea->generateWaypointsPerDecomposedArea();
-    ui->roiArea->showWaypoints();
+    m_controller.generateWaypoints(ui->roiArea->getROIPolygonMinAreaRect());
+    ui->roiArea->showWaypoints(m_controller.waypoints());
 }

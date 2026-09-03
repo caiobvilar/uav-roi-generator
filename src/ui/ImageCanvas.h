@@ -5,7 +5,6 @@
 #define IMAGECANVAS_H
 
 #include "io/GDALHandler.h"
-#include "planning/PathPlanner.h"
 #include "domain/RotatedRect.h"
 #include "domain/Drone.h"
 
@@ -95,26 +94,17 @@ class ImageCanvas : public QWidget
     }
 
     void
-    generateWaypointsPerDecomposedArea();
-    void
     calculateMinimumAreaRectangle();
     void
-    openDroneFile(const QString& filename);
-    QList<Drone>
-    calculateDroneCapabilities();
+    showDecomposedROI(const QList<QPair<QPolygonF, QString>>& decomposed);
     void
-    decomposeROI();
-    void
-    showDecomposedROI();
+    showWaypoints(const QList<QPair<Drone, QList<QPointF>>>& waypoints);
 
-    PathPlanner&
-    getPathPlanner()
+    QPolygonF
+    finalPolygonGeo() const
     {
-        return pathPlanner;
+        return gdalHandler.polygonToGeo(m_finalPolygon);
     }
-
-    void
-    showWaypoints();
 
   public slots:
     void
@@ -143,7 +133,6 @@ class ImageCanvas : public QWidget
   private:
     QList<QPointF> m_grahamPoints;
     GDALHandler gdalHandler;
-    PathPlanner pathPlanner;
     QPointF
     toImageCoords(const QPointF& pWidget) const;
     void
@@ -173,7 +162,6 @@ class ImageCanvas : public QWidget
     QPoint lastPanPos;
     bool panning = false;
     bool canDrawOnImage = false;
-    QList<QPair<Drone, QList<QPointF>>> allWaypointsPerDrone;
 };
 
 #endif
