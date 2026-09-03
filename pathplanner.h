@@ -4,17 +4,15 @@
 #include "domain/Drone.h"
 #include "domain/RotatedRect.h"
 
-#include <QObject>
 #include <QPair>
 #include <QPolygonF>
 #include <QString>
 #include <qlist.h>
 
-class PathPlanner : public QObject
+class PathPlanner
 {
-    Q_OBJECT
   public:
-    explicit PathPlanner(QObject* parent = nullptr);
+    PathPlanner() = default;
     QList<QPair<QPolygonF, QString>>
     decomposedROI(QPolygonF& roi, QList<Drone>& droneList, const RotatedRect& mar);
 
@@ -45,7 +43,6 @@ class PathPlanner : public QObject
     QPolygonF RegionOfInterest;
     QList<Drone> droneList;
     QList<QPair<QPolygonF, QString>> decomposedPolygons;
-  signals:
 };
 
 

@@ -13,7 +13,7 @@
 #include <QPainter>
 #include <qcontainerfwd.h>
 
-ROIArea::ROIArea(QWidget* parent) : QWidget(parent), pathPlanner(this)
+ROIArea::ROIArea(QWidget* parent) : QWidget(parent)
 {
     this->setMinimumHeight(constants::kWidgetMinHeight);
     this->setMinimumWidth(constants::kWidgetMinWidth);

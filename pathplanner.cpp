@@ -24,10 +24,6 @@ makeRectPoly(const RotatedRect& mar, double start, double end)
     return poly;
 }
 
-PathPlanner::PathPlanner(QObject* parent) : QObject{parent}
-{
-}
-
 void
 PathPlanner::setDecomposedROIs(const QList<QPair<QPolygonF, QString>>& decompROIs)
 {
