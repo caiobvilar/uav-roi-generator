@@ -13,15 +13,15 @@ class LabelPlacer
 {
   public:
     LabelPlacer(qreal imageWidth, qreal imageHeight, qreal margin = 5.0, qreal rotationDeg = -30.0);
-    QPointF place(const QRectF& bbox, const QFontMetrics& fm);
+    QPointF place(const QRectF& bbox, const QString& text, const QFontMetrics& fm);
     void clear();
     qreal imageWidth() const;
     qreal imageHeight() const;
 
   private:
-    QList<QPointF> candidates(const QRectF&, const QFontMetrics&) const;
+    QList<QPointF> candidates(const QRectF&, const QString&, const QFontMetrics&) const;
     bool overlapsPlaced(const QRectF&) const;
-    bool isValid(const QPointF&, const QFontMetrics&, QRectF*) const;
+    bool isValid(const QPointF&, const QString&, const QFontMetrics&, QRectF*) const;
     qreal m_imageWidth;
     qreal m_imageHeight;
     qreal m_margin;

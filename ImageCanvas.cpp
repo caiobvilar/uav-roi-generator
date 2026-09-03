@@ -925,7 +925,7 @@ ImageCanvas::showDecomposedROI()
         QString labelText = polyPair.second;
         QFontMetrics fm(font);
 
-        QPointF labelPt = placer.place(pixelSpacePolygon.boundingRect(), fm);
+        QPointF labelPt = placer.place(pixelSpacePolygon.boundingRect(), labelText, fm);
         drawLabel(painter, labelText, color, bgColor, constants::kAlphaLabelBg, labelPt, fm,
                   constants::kLabelRotationDeg);
 
@@ -1231,7 +1231,7 @@ ImageCanvas::showWaypoints()
         QString labelText = QString("Drone %1 (%2 pts)").arg(d.id).arg(pixelWaypoints.size());
         QFontMetrics fm(font);
 
-        QPointF labelPt = placer.place(pixelWaypoints.boundingRect(), fm);
+        QPointF labelPt = placer.place(pixelWaypoints.boundingRect(), labelText, fm);
         drawLabel(painter, labelText, color, bgColor, constants::kAlphaLabelBg, labelPt, fm,
                   constants::kLabelRotationDeg);
 

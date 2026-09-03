@@ -9,14 +9,14 @@ LabelPlacer::LabelPlacer(qreal imageWidth, qreal imageHeight, qreal margin, qrea
 }
 
 QPointF
-LabelPlacer::place(const QRectF& bbox, const QFontMetrics& fm)
+LabelPlacer::place(const QRectF& bbox, const QString& text, const QFontMetrics& fm)
 {
-    const int textWidth = fm.maxWidth();
+    const int textWidth = fm.horizontalAdvance(text);
     const int textHeight = fm.height();
     const qreal imgW = m_imageWidth;
     const qreal imgH = m_imageHeight;
 
-    const QList<QPointF> posCandidates = candidates(bbox, fm);
+    const QList<QPointF> posCandidates = candidates(bbox, text, fm);
 
     QPointF labelPt = posCandidates.value(0);
     bool foundValidPosition = false;
@@ -24,7 +24,7 @@ LabelPlacer::place(const QRectF& bbox, const QFontMetrics& fm)
     // First pass: try all candidate positions
     for (const QPointF& candidate : posCandidates)
     {
-        if (isValid(candidate, fm, nullptr))
+        if (isValid(candidate, text, fm, nullptr))
         {
             labelPt = candidate;
             foundValidPosition = true;
@@ -40,14 +40,14 @@ LabelPlacer::place(const QRectF& bbox, const QFontMetrics& fm)
             for (int yOffset = 0; yOffset <= imgH; yOffset += textHeight + 5)
             {
                 QPointF shifted = candidate + QPointF(0, yOffset);
-                if (isValid(shifted, fm, nullptr))
+                if (isValid(shifted, text, fm, nullptr))
                 {
                     labelPt = shifted;
                     foundValidPosition = true;
                     break;
                 }
                 shifted = candidate - QPointF(0, yOffset);
-                if (isValid(shifted, fm, nullptr))
+                if (isValid(shifted, text, fm, nullptr))
                 {
                     labelPt = shifted;
                     foundValidPosition = true;
@@ -89,10 +89,10 @@ LabelPlacer::imageHeight() const
 }
 
 QList<QPointF>
-LabelPlacer::candidates(const QRectF& bbox, const QFontMetrics& fm) const
+LabelPlacer::candidates(const QRectF& bbox, const QString& text, const QFontMetrics& fm) const
 {
     const qreal margin = m_margin;
-    const int textWidth = fm.maxWidth();
+    const int textWidth = fm.horizontalAdvance(text);
     const int textHeight = fm.height();
 
     const qreal roiMinX = bbox.left();
@@ -118,9 +118,9 @@ LabelPlacer::overlapsPlaced(const QRectF& rect) const
 }
 
 bool
-LabelPlacer::isValid(const QPointF& pt, const QFontMetrics& fm, QRectF* outRect) const
+LabelPlacer::isValid(const QPointF& pt, const QString& text, const QFontMetrics& fm, QRectF* outRect) const
 {
-    const int textWidth = fm.maxWidth();
+    const int textWidth = fm.horizontalAdvance(text);
     const int textHeight = fm.height();
 
     QRectF labelRect(pt.x() - 2, pt.y() - textHeight, textWidth + 4, textHeight + 4);
