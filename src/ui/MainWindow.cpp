@@ -183,8 +183,10 @@ MainWindow::onCalculateDroneCapabilities()
         model->appendRow(droneItem);
     }
 
-    // Set the new model - the treeView takes ownership and will delete old model
+    // Set the new model - delete old model since Qt views don't take ownership
+    QAbstractItemModel* oldModel = ui->treeView->model();
     ui->treeView->setModel(model.release());
+    delete oldModel;
 
     // Expand all items and resize columns
     ui->treeView->expandAll();
