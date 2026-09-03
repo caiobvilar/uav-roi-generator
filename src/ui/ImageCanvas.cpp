@@ -1,17 +1,18 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR BSD-3-Clause
 
-#include "ImageCanvas.h"
-#include "GDALHandler.h"
+#include "ui/ImageCanvas.h"
+#include "io/GDALHandler.h"
 #include "geometry/ConvexHull.h"
 #include "geometry/PolygonGeometry.h"
 #include "io/GeoJSON.h"
-#include "pathplanner.h"
+#include "planning/PathPlanner.h"
 #include "planning/BoustrophedonSweep.h"
 #include "planning/StripDecomposition.h"
 #include "ui/ColorPalette.h"
 #include "ui/LabelPlacer.h"
-#include "utils.h"
+#include "constants.h"
+#include "domain/GeoValidation.h"
 
 #include <QDateTime>
 #include <QMouseEvent>

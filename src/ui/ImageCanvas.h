@@ -4,10 +4,11 @@
 #ifndef IMAGECANVAS_H
 #define IMAGECANVAS_H
 
-#include "GDALHandler.h"
-#include "pathplanner.h"
+#include "io/GDALHandler.h"
+#include "planning/PathPlanner.h"
 #include "ui_interfaces.h"
-#include "utils.h"
+#include "domain/RotatedRect.h"
+#include "domain/Drone.h"
 
 #include <QColor>
 #include <QDebug>

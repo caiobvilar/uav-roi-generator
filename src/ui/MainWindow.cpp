@@ -1,6 +1,6 @@
-#include "mainwindow.h"
+#include "ui/MainWindow.h"
 #include "geometry/PolygonGeometry.h"
-#include "pathplanner.h"
+#include "planning/PathPlanner.h"
 #include "ui_mainwindow.h"
 #include <QApplication>
 #include <QCloseEvent>
