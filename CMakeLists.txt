@@ -9,9 +9,14 @@ set(CMAKE_AUTOMOC ON)
 set(CMAKE_AUTOUIC ON)
 set(CMAKE_AUTORCC ON)
 
+set_property(SOURCE ImageCanvas.h ui_interfaces.h PROPERTY SKIP_AUTOUIC TRUE)
+
 qt_add_executable(ROIGenerator WIN32 MACOSX_BUNDLE
     main.cpp
-    ROIArea.h ROIArea.cpp
+    ImageCanvas.h ImageCanvas.cpp
+    ui_interfaces.h
+    ui/LabelPlacer.h ui/LabelPlacer.cpp
+    ui/ColorPalette.h ui/ColorPalette.cpp
     GDALHandler.h GDALHandler.cpp
     io/GeoJSON.h io/GeoJSON.cpp
     mainwindow.h mainwindow.cpp mainwindow.ui

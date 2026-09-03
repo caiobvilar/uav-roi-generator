@@ -52,6 +52,7 @@ build-*/
 moc_*.cpp
 moc_*.h
 ui_*.h
+!ui_interfaces.h
 qrc_*.cpp
 
 # Autogen

@@ -47,7 +47,7 @@ class MainWindow : public QMainWindow
     void
     onCalculateWaypoints();
 
-    // Auto-connected slot for ROIArea::StatusMessageChanged
+    // Auto-connected slot for ImageCanvas::StatusMessageChanged
     void
     on_roiArea_StatusMessageChanged(const QString& text);
 

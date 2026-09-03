@@ -20,7 +20,7 @@
    <string>MainWindow</string>
   </property>
   <widget class="QWidget" name="centralwidget">
-   <widget class="ROIArea" name="roiArea" native="true">
+   <widget class="ImageCanvas" name="roiArea" native="true">
     <property name="geometry">
      <rect>
       <x>10</x>
@@ -206,9 +206,9 @@
  </widget>
  <customwidgets>
   <customwidget>
-   <class>ROIArea</class>
+   <class>ImageCanvas</class>
    <extends>QWidget</extends>
-   <header>ROIArea.h</header>
+   <header>ImageCanvas.h</header>
    <container>1</container>
   </customwidget>
  </customwidgets>
