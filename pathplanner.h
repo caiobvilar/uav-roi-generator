@@ -46,46 +46,10 @@ class PathPlanner : public QObject
         return this->droneList;
     }
 
-    QPolygonF
-    makeDividerPoly(const RotatedRect& left, const RotatedRect& right);
     void
     setDecomposedROIs(const QList<QPair<QPolygonF, QString>>& decompROIs);
     QList<QPair<QPolygonF, QString>>
     getDecomposedROIs() const;
-
-    double
-    compute_partitioned_area(const double theta, QTransform& EF, const QTransform& AD, const QTransform& BC,
-                             QPolygonF& target, double marHeight);
-    QPolygonF
-    getBoundingBox(const QTransform& AD, const QTransform& EF, double height);
-    QTransform
-    rectToTransform(const RotatedRect& rect);
-    double
-    binary_search(double cap, QTransform& EF, const QTransform& AD, const QTransform& BC, QPolygonF& target,
-                  double marHeight);
-
-    // Path planning algorithm - Find longest bounding line and its slope
-    // Searches consecutive edges (bounding lines) l_{k,k+1} of the polygon
-    // Returns: QPair of (indices pair, slope) where indices pair is (k, k+1)
-    QPair<QPair<int, int>, double>
-    findLongestBoundingLineWithSlope(const QPolygonF& area);
-    // Path planning algorithm - Helper: Compute internal angle at vertex i
-    // Returns angle in radians between edges (v_{i-1}, v_i) and (v_i, v_{i+1})
-    double
-    computeInternalAngle(const QPolygonF& area, int i);
-
-    // Path planning algorithm - Compute distance with angle adjustment
-    // Returns distance from v_i to v_{i+1}, adjusted if internal angle > π/2
-    // Uses L_x (max_x_footprint) for the angle adjustment
-    double
-    computeDistanceWithAngleAdjustment(const QPolygonF& area, int i, double max_x_footprint);
-
-    // Path planning algorithm - Main loop computing waypoints with angle adjustment
-    // while (i != k): iterates from start vertex to longest line's starting vertex
-    // Returns: list of waypoints along the scanning direction
-    QList<QPointF>
-    computeWaypointsLoop(const QPolygonF& area, int start_i, int k, double max_x_footprint, double max_y_footprint,
-                         double slope);
 
     // Path planning algorithm - Compute waypoints using MAR-based sweep pattern
     // Uses the Minimum Area Rectangle to bound waypoints within the sub-ROI
