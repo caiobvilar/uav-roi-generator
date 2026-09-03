@@ -4,6 +4,7 @@
 #include "mission/MissionController.h"
 
 #include <QMainWindow>
+#include <memory>
 
 namespace Ui
 {
@@ -52,7 +53,7 @@ class MainWindow : public QMainWindow
     on_roiArea_StatusMessageChanged(const QString& text);
 
   private:
-    Ui::MainWindow* ui;
+    std::unique_ptr<Ui::MainWindow> ui;
     MissionController m_controller;
 };
 

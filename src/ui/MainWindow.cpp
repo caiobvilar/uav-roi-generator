@@ -10,7 +10,8 @@
 #include <QMessageBox>
 #include <QStandardItemModel>
 
-MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent), ui(new Ui::MainWindow), m_controller(this)
+MainWindow::MainWindow(QWidget* parent)
+    : QMainWindow(parent), ui(std::make_unique<Ui::MainWindow>()), m_controller(this)
 {
     ui->setupUi(this);
     setWindowTitle("ROIGenerator");
@@ -35,10 +36,7 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent), ui(new Ui::MainWi
             &MainWindow::on_roiArea_StatusMessageChanged);
 }
 
-MainWindow::~MainWindow()
-{
-    delete ui;
-}
+MainWindow::~MainWindow() = default;
 
 void
 MainWindow::onOpenFileTriggered()
@@ -125,7 +123,7 @@ MainWindow::onCalculateDroneCapabilities()
         return;
     }
 
-    QStandardItemModel* model = new QStandardItemModel();
+    auto model = std::make_unique<QStandardItemModel>();
     model->setHorizontalHeaderLabels(QStringList() << "Property" << "Value");
 
     for (const Drone& d : drones)
@@ -186,12 +184,7 @@ MainWindow::onCalculateDroneCapabilities()
     }
 
     // Set the new model - the treeView takes ownership and will delete old model
-    QAbstractItemModel* oldModel = ui->treeView->model();
-    ui->treeView->setModel(model);
-    if (oldModel)
-    {
-        oldModel->deleteLater();
-    }
+    ui->treeView->setModel(model.release());
 
     // Expand all items and resize columns
     ui->treeView->expandAll();
