@@ -883,11 +883,11 @@ ImageCanvas::showWaypoints(const QList<QPair<Drone, QList<QPointF>>>& waypoints)
     for (const auto& dronePair : waypoints)
     {
         const Drone& d = dronePair.first;
-        const QList<QPointF>& waypoints = dronePair.second;
+        const QList<QPointF>& droneWaypoints = dronePair.second;
 
-        qInfo() << "Processing drone" << d.id << "with" << waypoints.size() << "waypoints";
+        qInfo() << "Processing drone" << d.id << "with" << droneWaypoints.size() << "waypoints";
 
-        if (waypoints.isEmpty())
+        if (droneWaypoints.isEmpty())
         {
             qWarning() << "No waypoints for drone" << d.id;
             emit StatusMessageChanged(tr("<font color='orange'>[WARNING]: No waypoints for drone %1</font>").arg(d.id));
@@ -903,7 +903,7 @@ ImageCanvas::showWaypoints(const QList<QPair<Drone, QList<QPointF>>>& waypoints)
 
         // Convert all waypoints from geo to pixel coordinates at once
         QPolygonF geoWaypoints;
-        for (const QPointF& wp : waypoints)
+        for (const QPointF& wp : droneWaypoints)
             geoWaypoints << wp;
 
         // Validate waypoints are in WGS84 before conversion
@@ -928,8 +928,8 @@ ImageCanvas::showWaypoints(const QList<QPair<Drone, QList<QPointF>>>& waypoints)
             emit StatusMessageChanged(
                 tr("<font color='red'>[WARNING]: Conversion to pixels failed for drone %1</font>").arg(d.id));
             // Debug: print first few geo waypoints
-            for (int i = 0; i < qMin(3, waypoints.size()); ++i)
-                qInfo() << "  Geo waypoint" << i << ":" << waypoints[i];
+            for (int i = 0; i < qMin(3, droneWaypoints.size()); ++i)
+                qInfo() << "  Geo waypoint" << i << ":" << droneWaypoints[i];
             colorIdx++;
             continue;
         }
