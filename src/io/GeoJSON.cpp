@@ -164,12 +164,23 @@ reprojectToWgs84(const QJsonDocument& srcDoc, const QString& srcWkt)
         return srcDoc; // Return as-is
     }
 
-    OGRCoordinateTransformation* ct = OGRCreateCoordinateTransformation(&srcSRS, &dstSRS);
-    if (!ct)
+    OGRCoordinateTransformation* ctRaw = OGRCreateCoordinateTransformation(&srcSRS, &dstSRS);
+    if (!ctRaw)
     {
         qWarning() << "Failed to create coordinate transformation";
         return QJsonDocument();
     }
+
+    struct CTCloser
+    {
+        OGRCoordinateTransformation* p;
+        ~CTCloser()
+        {
+            if (p)
+                OCTDestroyCoordinateTransformation(p);
+        }
+    } ctGuard{ctRaw};
+    OGRCoordinateTransformation* ct = ctRaw;
 
     QJsonArray outRing;
     for (int i = 0; i < ring.size(); ++i)
@@ -199,7 +210,6 @@ reprojectToWgs84(const QJsonDocument& srcDoc, const QString& srcWkt)
         outC.append(x); // lat (was in x after transform)
         outRing.append(outC);
     }
-    OCTDestroyCoordinateTransformation(ct);
 
     QJsonArray outCoords;
     outCoords.append(outRing);
