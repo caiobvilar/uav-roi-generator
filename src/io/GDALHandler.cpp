@@ -118,10 +118,12 @@ GDALHandler::toQImage() const
         return QImage();
     }
 
-    const int pixelCount = width * height;
-    std::vector<uint8_t> rBuf(pixelCount);
-    std::vector<uint8_t> gBuf(pixelCount);
-    std::vector<uint8_t> bBuf(pixelCount);
+    const int64_t pixelCount = static_cast<int64_t>(width) * static_cast<int64_t>(height);
+    if (pixelCount <= 0)
+        return QImage();
+    std::vector<uint8_t> rBuf(static_cast<size_t>(pixelCount));
+    std::vector<uint8_t> gBuf(static_cast<size_t>(pixelCount));
+    std::vector<uint8_t> bBuf(static_cast<size_t>(pixelCount));
 
     if (rb->RasterIO(GF_Read, 0, 0, width, height, rBuf.data(), width, height, GDT_Byte, 0, 0) != CE_None)
         return QImage();
@@ -137,13 +139,13 @@ GDALHandler::toQImage() const
     for (int y = 0; y < height; ++y)
     {
         uchar* dst = img.scanLine(y);
-        int rowOff = y * width;
+        const int64_t rowOff = static_cast<int64_t>(y) * width;
         for (int x = 0; x < width; ++x)
         {
-            int i = rowOff + x;
-            dst[3 * x + 0] = rBuf[i];
-            dst[3 * x + 1] = gBuf[i];
-            dst[3 * x + 2] = bBuf[i];
+            const int64_t i = rowOff + x;
+            dst[3 * x + 0] = rBuf[static_cast<size_t>(i)];
+            dst[3 * x + 1] = gBuf[static_cast<size_t>(i)];
+            dst[3 * x + 2] = bBuf[static_cast<size_t>(i)];
         }
     }
 
