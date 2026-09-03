@@ -18,6 +18,10 @@ qt_add_executable(ROIGenerator
 
 
     ROIArea.h ROIArea.cpp
+    constants.h
+    domain/RotatedRect.h
+    domain/Drone.h domain/Drone.cpp
+    domain/GeoValidation.h domain/GeoValidation.cpp
     geometry/ConvexHull.h geometry/ConvexHull.cpp
     geometry/PolygonGeometry.h geometry/PolygonGeometry.cpp
     geometry/PolygonClipping.h geometry/PolygonClipping.cpp

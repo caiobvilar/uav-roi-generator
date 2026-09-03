@@ -98,7 +98,7 @@ class ROIArea : public QWidget
     calculateMinimumAreaRectangle();
     void
     openDroneFile(const QString& filename);
-    QList<drone>
+    QList<Drone>
     calculateDroneCapabilities();
     void
     decomposeROI();
@@ -179,7 +179,7 @@ class ROIArea : public QWidget
     QPoint lastPanPos;
     bool panning = false;
     bool canDrawOnImage = false;
-    QList<QPair<drone, QList<QPointF>>> allWaypointsPerDrone;
+    QList<QPair<Drone, QList<QPointF>>> allWaypointsPerDrone;
 
     // Cached contrasting color palette based on background analysis
     QVector<QColor> contrastingPalette;

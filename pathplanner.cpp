@@ -1,12 +1,13 @@
 #include "pathplanner.h"
+#include "constants.h"
+#include "domain/GeoValidation.h"
 #include "geometry/PolygonClipping.h"
 #include "geometry/PolygonGeometry.h"
-#include "utils.h"
-#include <QFile>
-#include <QIODevice>
+#include <QDebug>
 #include <QList>
 #include <QPolygonF>
 #include <QVector>
+#include <QtGlobal>
 #include <algorithm>
 
 // Helper: Create a rectangle polygon in MAR coordinates
@@ -27,157 +28,6 @@ PathPlanner::PathPlanner(QObject* parent) : QObject{parent}
 {
 }
 
-QList<drone>
-PathPlanner::getDroneInfo(const QString& filename)
-{
-    QList<drone> results;
-
-    QFile file(filename);
-    if (!file.open(QIODevice::ReadOnly))
-    {
-        qWarning() << "Failed to open file:" << filename;
-        return results;
-    }
-
-    QByteArray data = file.readAll();
-    file.close();
-
-    QJsonDocument doc = QJsonDocument::fromJson(data);
-    if (!doc.isObject())
-    {
-        qWarning() << "Invalid JSON format";
-        return results;
-    }
-
-    QJsonObject rootObj = doc.object();
-    QJsonArray dronesArray = rootObj["drones"].toArray();
-
-    for (int i = 0; i < dronesArray.size(); ++i)
-    {
-        QJsonObject droneObj = dronesArray[i].toObject();
-
-        drone d;
-        d.id = droneObj["id"].toString().split("_").last().toUInt();
-        d.name = droneObj["name"].toString();
-
-        // Battery info
-        QJsonObject batteryObj = droneObj["battery"].toObject();
-        d.battery_capacity = batteryObj["capacity"].toDouble();
-        d.battery_current_capacity = batteryObj["current_capacity"].toString().toDouble();
-
-        // Max velocity
-        QJsonObject velocityObj = droneObj["max_velocity"].toObject();
-        d.max_horizontal_velocity = velocityObj["horizontal"].toDouble();
-        d.max_vertical_velocity = velocityObj["vertical"].toDouble();
-
-        // Camera info
-        QJsonObject cameraObj = droneObj["Camera"].toObject();
-        d.camera_focal_length = cameraObj["focal_length"].toString().toDouble();
-        d.camera_array_width = cameraObj["array_width"].toString().toDouble();
-        d.camera_array_height = cameraObj["array_height"].toString().toDouble();
-        d.camera_image_width = cameraObj["image_width"].toString().toDouble();
-        d.camera_image_height = cameraObj["image_height"].toString().toDouble();
-        d.camera_shutter_speed = cameraObj["shutter_speed"].toString().toDouble();
-
-        results.append(d);
-    }
-
-    return results;
-}
-
-void
-PathPlanner::calcFlightAltitude(QList<drone>& droneList)
-{
-    for (auto& d : droneList)
-    {
-        // GSD_x * f_l * i_x / l_x
-        double h_x = (DESIRED_GSD * d.camera_focal_length * d.camera_image_width) / d.camera_array_width;
-
-        // GSD_y * f_l * i_y / l_y
-        double h_y = (DESIRED_GSD * d.camera_focal_length * d.camera_image_height) / d.camera_array_height;
-
-        // h = min{h_x, h_y}
-        d.ideal_flight_altitude = std::min(h_x, h_y);
-
-        qDebug() << "Drone" << d.name << "- Ideal flight altitude:" << d.ideal_flight_altitude << "m";
-    }
-}
-
-void
-PathPlanner::calcDroneCameraFootprint(QList<drone>& droneList)
-{
-    for (auto& d : droneList)
-    {
-        // L_x = h * l_x / f_l
-        d.max_x_footprint = (d.ideal_flight_altitude * d.camera_array_width) / d.camera_focal_length;
-
-        // L_y = h * l_y / f_l
-        d.max_y_footprint = (d.ideal_flight_altitude * d.camera_array_height) / d.camera_focal_length;
-
-        qDebug() << "Drone" << d.name << "- Camera footprint:";
-        qDebug() << "  L_x:" << d.max_x_footprint << "m";
-        qDebug() << "  L_y:" << d.max_y_footprint << "m";
-    }
-}
-
-void
-PathPlanner::calcMaximumForwardVelocity(QList<drone>& droneList)
-{
-    for (auto& d : droneList)
-    {
-        // Calculate GSD (Ground Sample Distance) in the flight direction
-        // GSD_y = L_y / image_height
-        double gsd_y = d.max_y_footprint / d.camera_image_height;
-
-        // Motion blur constraint: drone movement during exposure should be less than 1 GSD
-        // V_max_blur = GSD_y / shutter_speed
-        double maxVelocityBlur = gsd_y / d.camera_shutter_speed;
-
-        // Overlap constraint: velocity to maintain forward overlap
-        // V_max_overlap = L_y * (1 - O_f) / frame_interval
-        // For now, we use the motion blur constraint as primary
-        double calculatedVelocity = maxVelocityBlur;
-
-        // Cap at drone's physical maximum horizontal velocity
-        d.max_forward_velocity = qMin(calculatedVelocity, d.max_horizontal_velocity);
-
-        qDebug() << "Drone" << d.name << "- GSD (y):" << gsd_y * 100.0 << "cm/px";
-        qDebug() << "Drone" << d.name << "- Maximum forward velocity:" << d.max_forward_velocity << "m/s";
-        if (calculatedVelocity > d.max_horizontal_velocity)
-        {
-            qDebug() << "  (capped from" << calculatedVelocity << "m/s to drone's max" << d.max_horizontal_velocity
-                     << "m/s)";
-        }
-    }
-}
-
-void
-PathPlanner::calcDroneRelativeCapability(QList<drone>& droneList)
-{
-    // Calculate capability for each drone: c_i = V_max^i * L_x^i
-    double totalCapability = 0.0;
-
-    for (auto& d : droneList)
-    {
-        d.relative_capability_score = d.max_forward_velocity * d.max_x_footprint;
-        totalCapability += d.relative_capability_score;
-    }
-
-    // Calculate relative capability: c_hat_i = c_i / sum(c_j)
-    if (totalCapability > 0.0)
-    {
-        for (auto& d : droneList)
-        {
-            d.relative_capability_score = d.relative_capability_score / totalCapability;
-            qDebug() << "Drone" << d.name << "- Relative capability score:" << d.relative_capability_score;
-        }
-    }
-    else
-    {
-        qWarning() << "Total capability is zero; cannot calculate relative capabilities";
-    }
-}
-
 void
 PathPlanner::setDecomposedROIs(const QList<QPair<QPolygonF, QString>>& decompROIs)
 {
@@ -191,7 +41,7 @@ PathPlanner::getDecomposedROIs() const
 }
 
 QList<QPair<QPolygonF, QString>>
-PathPlanner::decomposedROI(QPolygonF& roi, QList<drone>& droneList, const RotatedRect& mar)
+PathPlanner::decomposedROI(QPolygonF& roi, QList<Drone>& droneList, const RotatedRect& mar)
 {
     QList<QPair<QPolygonF, QString>> result;
 
@@ -201,7 +51,7 @@ PathPlanner::decomposedROI(QPolygonF& roi, QList<drone>& droneList, const Rotate
     // Calculate total capability sum
     double totalCap = 0.0;
     QVector<double> capabilities;
-    for (const drone& d : droneList)
+    for (const Drone& d : droneList)
     {
         capabilities.append(d.relative_capability_score);
         totalCap += d.relative_capability_score;
@@ -230,7 +80,7 @@ PathPlanner::decomposedROI(QPolygonF& roi, QList<drone>& droneList, const Rotate
             QPolygonF divider = makeRectPoly(mar, start, mid);
             QPolygonF clipped = geometry::sutherlandHodgmanClip(roi, divider);
             double area = geometry::shoelaceArea(clipped);
-            if (area < (targetArea - EPSILON_SMALL))
+            if (area < (targetArea - constants::kEpsilonSmall))
                 left = mid;
             else
                 right = mid;
@@ -276,14 +126,14 @@ PathPlanner::computeWaypointsWithMAR(const QPolygonF& area, double max_x_footpri
 
     // === COORDINATE SYSTEM VALIDATION ===
     // Ensure polygon and MAR are in the same coordinate system (both WGS84)
-    if (!validateCoordinateSystemMatch(area, mar, "computeWaypointsWithMAR"))
+    if (!domain::validateCoordinateSystemMatch(area, mar, "computeWaypointsWithMAR"))
     {
         qCritical() << "Aborting waypoint generation due to coordinate system mismatch";
         return waypoints;
     }
 
     // Ensure polygon is in WGS84 (geo coordinates), not pixel space
-    if (!isPolygonWGS84(area))
+    if (!domain::isPolygonWGS84(area))
     {
         qCritical() << "Error: Polygon must be in WGS84/projected coordinates for waypoint calculation";
         qCritical() << "  First point:" << area.first() << "- appears to be in pixel space";
@@ -292,7 +142,7 @@ PathPlanner::computeWaypointsWithMAR(const QPolygonF& area, double max_x_footpri
 
     // === UNIT VALIDATION ===
     // Ensure footprint values are in meters (not centimeters)
-    if (!validateFootprintMeters(max_x_footprint, max_y_footprint, "computeWaypointsWithMAR"))
+    if (!domain::validateFootprintMeters(max_x_footprint, max_y_footprint, "computeWaypointsWithMAR"))
     {
         qCritical() << "Aborting waypoint generation due to unit mismatch";
         qCritical() << "  Hint: Convert cm to meters by dividing by 100";
@@ -300,7 +150,7 @@ PathPlanner::computeWaypointsWithMAR(const QPolygonF& area, double max_x_footpri
     }
 
     // Validate MAR dimensions are reasonable for meters
-    if (mar.width > MAR_SIZE_MAX || mar.height > MAR_SIZE_MAX)
+    if (mar.width > constants::kMarSizeMax || mar.height > constants::kMarSizeMax)
     {
         qWarning() << "Warning: MAR dimensions seem very large (width=" << mar.width << ", height=" << mar.height
                    << "). Verify units are in meters.";
@@ -334,8 +184,8 @@ PathPlanner::computeWaypointsWithMAR(const QPolygonF& area, double max_x_footpri
     qInfo() << "Sub-ROI bounds in MAR coords: U[" << minU << "," << maxU << "] V[" << minV << "," << maxV << "]";
 
     // Spacing calculations
-    double spacingX = max_x_footprint * (1.0 - FORWARD_OVERLAP); // Along flight line
-    double spacingY = max_y_footprint * (1.0 - SIDE_OVERLAP);    // Between flight lines
+    double spacingX = max_x_footprint * (1.0 - constants::kForwardOverlap); // Along flight line
+    double spacingY = max_y_footprint * (1.0 - constants::kSideOverlap);    // Between flight lines
 
     // Get sub-ROI dimensions
     double subRoiWidth = maxU - minU;

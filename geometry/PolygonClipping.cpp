@@ -1,4 +1,5 @@
 #include "geometry/PolygonClipping.h"
+#include "constants.h"
 #include <cmath>
 
 namespace geometry {
@@ -32,7 +33,7 @@ QPolygonF sutherlandHodgmanClip(QPolygonF subject, const QPolygonF& clip)
         double c2 = a2 * q1.x() + b2 * q1.y();
 
         double det = a1 * b2 - a2 * b1;
-        if (std::fabs(det) < 1e-12)
+        if (std::fabs(det) < constants::kEpsilonTiny)
             return p2; // Lines are parallel, return p2 as fallback
 
         double x = (b2 * c1 - b1 * c2) / det;

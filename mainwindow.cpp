@@ -134,7 +134,7 @@ MainWindow::onOpenDroneInfo()
 void
 MainWindow::onCalculateDroneCapabilities()
 {
-    QList<drone> drones = ui->roiArea->calculateDroneCapabilities();
+    QList<Drone> drones = ui->roiArea->calculateDroneCapabilities();
 
     if (drones.isEmpty())
     {
@@ -145,7 +145,7 @@ MainWindow::onCalculateDroneCapabilities()
     QStandardItemModel* model = new QStandardItemModel();
     model->setHorizontalHeaderLabels(QStringList() << "Property" << "Value");
 
-    for (const drone& d : drones)
+    for (const Drone& d : drones)
     {
         // Create root item for this drone
         QStandardItem* droneItem = new QStandardItem(QString("%1 (ID: %2)").arg(d.name).arg(d.id));
@@ -226,8 +226,8 @@ MainWindow::onDecomposeROI()
     qInfo() << "ROI size:" << roi.size() << "Points:" << roi;
     RotatedRect mar = ui->roiArea->getROIPolygonMinAreaRect(); // or similar
     qInfo() << "MAR origin:" << mar.origin << "width:" << mar.width << "height:" << mar.height;
-    QList<drone> drones = ui->roiArea->getPathPlanner().getDroneList();
-    for (const drone& d : drones)
+    QList<Drone> drones = ui->roiArea->getPathPlanner().getDroneList();
+    for (const Drone& d : drones)
         qInfo() << "Drone" << d.id << "capability:" << d.relative_capability_score;
     ui->roiArea->decomposeROI();
 

@@ -15,8 +15,8 @@
 
 ROIArea::ROIArea(QWidget* parent) : QWidget(parent), pathPlanner(this)
 {
-    this->setMinimumHeight(WIDGET_MIN_HEIGHT);
-    this->setMinimumWidth(WIDGET_MIN_WIDTH);
+    this->setMinimumHeight(constants::kWidgetMinHeight);
+    this->setMinimumWidth(constants::kWidgetMinWidth);
 
     openImagePair = qMakePair(QImage(), QString());
     // 1. Create and store an initial empty base image
@@ -49,12 +49,12 @@ ROIArea::addOverlay(const QImage& baseImage, const QString& overlayLabel)
 
     painter.setPen(Qt::yellow);
     QFont font = painter.font();
-    font.setPointSize(FONT_SIZE_LARGE);
+    font.setPointSize(constants::kFontSizeLarge);
     font.setBold(true);
     painter.setFont(font);
 
     const QString text = overlayLabel;
-    const int margin = LABEL_MARGIN_LARGE;
+    const int margin = constants::kLabelMarginLarge;
     QRect rect = overlay.rect().adjusted(margin, margin, -margin, -margin);
     painter.drawText(rect, Qt::AlignTop | Qt::AlignRight, text);
 
@@ -293,7 +293,7 @@ ROIArea::mousePressEvent(QMouseEvent* event)
 void
 ROIArea::wheelEvent(QWheelEvent* event)
 {
-    constexpr qreal zoomStep = ZOOM_STEP; // fine control
+    constexpr qreal zoomStep = constants::kZoomStep; // fine control
     if (panning)
     {
         QWidget::wheelEvent(event);
@@ -304,7 +304,7 @@ ROIArea::wheelEvent(QWheelEvent* event)
     else
         zoomFactor /= zoomStep;
 
-    zoomFactor = qBound<qreal>(ZOOM_MIN, zoomFactor, ZOOM_MAX);
+    zoomFactor = qBound<qreal>(constants::kZoomMin, zoomFactor, constants::kZoomMax);
     update();
     QWidget::wheelEvent(event);
 }
@@ -365,7 +365,7 @@ ROIArea::drawPolygonOutline(const QPolygonF& polygon)
 {
     cleanToOpenImage();
     QPolygonF toDrawPolygon;
-    if (isPolygonWGS84(polygon))
+    if (domain::isPolygonWGS84(polygon))
     {
         qInfo() << "Polygon was in WGS84";
         toDrawPolygon = gdalHandler.geoPolygonToPixels(polygon);
@@ -388,9 +388,9 @@ ROIArea::drawPolygonOutline(const QPolygonF& polygon)
     QColor outlineColor = palette.isEmpty() ? Qt::red : palette[0];
 
     QPen pen(outlineColor);
-    pen.setWidthF(PEN_WIDTH_DEFAULT / zoomFactor);
+    pen.setWidthF(constants::kPenWidthDefault / zoomFactor);
     painter.setPen(pen);
-    QBrush brush(QColor(outlineColor.red(), outlineColor.green(), outlineColor.blue(), ALPHA_ROI_OUTLINE));
+    QBrush brush(QColor(outlineColor.red(), outlineColor.green(), outlineColor.blue(), constants::kAlphaRoiOutline));
     painter.setBrush(brush);
 
     painter.drawPolygon(toDrawPolygon); // image coords
@@ -654,7 +654,7 @@ ROIArea::drawGeoPolygonOnCurrentOverlay(const QList<QPointF>& geoPts)
 
     p.setRenderHint(QPainter::Antialiasing, true);
     QPen pen(Qt::green);
-    pen.setWidth(PEN_WIDTH_THICK);
+    pen.setWidth(constants::kPenWidthThick);
     p.setPen(pen);
     p.setBrush(Qt::NoBrush);
     p.drawPolygon(pixPoly);
@@ -690,7 +690,7 @@ ROIArea::calculateMinimumAreaRectangle()
     ROIPolygonMinAreaRect = geometry::minimumAreaRectangle(hull);
 
     // Validate result is in WGS84
-    if (!isRotatedRectWGS84(ROIPolygonMinAreaRect))
+    if (!domain::isRotatedRectWGS84(ROIPolygonMinAreaRect))
     {
         qWarning() << "Warning: MAR origin doesn't look like WGS84 coordinates:" << ROIPolygonMinAreaRect.origin;
         emit StatusMessageChanged(tr("<font color='red'>[WARNING]: MAR origin doesn't look like WGS84 coordinates - "
@@ -729,7 +729,7 @@ ROIArea::drawMinimumAreaRectangle()
 
     QPen pen;
     pen.setColor(marColor);
-    pen.setWidthF(PEN_WIDTH_DEFAULT / zoomFactor); // keep thickness with zoom
+    pen.setWidthF(constants::kPenWidthDefault / zoomFactor); // keep thickness with zoom
     overlayPainter.setPen(pen);
     overlayPainter.setBrush(Qt::NoBrush);
     overlayPainter.setRenderHint(QPainter::Antialiasing, true);
@@ -758,14 +758,14 @@ ROIArea::drawMinimumAreaRectangle()
 void
 ROIArea::openDroneFile(const QString& filename)
 {
-    QList<drone> listOfDrones = pathPlanner.getDroneInfo(filename);
+    QList<Drone> listOfDrones = domain::parseDrones(filename);
     pathPlanner.setDroneList(listOfDrones);
 }
 
-QList<drone>
+QList<Drone>
 ROIArea::calculateDroneCapabilities()
 {
-    QList<drone> drones = pathPlanner.getDroneList();
+    QList<Drone> drones = pathPlanner.getDroneList();
 
     if (drones.isEmpty())
     {
@@ -773,10 +773,10 @@ ROIArea::calculateDroneCapabilities()
         return drones;
     }
 
-    pathPlanner.calcFlightAltitude(drones);
-    pathPlanner.calcDroneCameraFootprint(drones);
-    pathPlanner.calcMaximumForwardVelocity(drones);
-    pathPlanner.calcDroneRelativeCapability(drones);
+    domain::calcFlightAltitude(drones);
+    domain::calcDroneCameraFootprint(drones);
+    domain::calcMaximumForwardVelocity(drones);
+    domain::calcDroneRelativeCapability(drones);
 
     pathPlanner.setDroneList(drones);
     return drones;
@@ -792,7 +792,7 @@ ROIArea::decomposeROI()
         return;
     }
 
-    QList<drone> drones = pathPlanner.getDroneList();
+    QList<Drone> drones = pathPlanner.getDroneList();
     if (drones.isEmpty())
     {
         qWarning() << "No drones loaded for decomposition.";
@@ -823,7 +823,7 @@ ROIArea::decomposeROI()
 void
 ROIArea::showDecomposedROI()
 {
-    QList<drone> drones = pathPlanner.getDroneList();
+    QList<Drone> drones = pathPlanner.getDroneList();
     if (drones.isEmpty())
     {
         qInfo() << "No drones loaded for decomposition.";
@@ -861,16 +861,16 @@ ROIArea::showDecomposedROI()
     {
         QColor color = contrastingPalette[colorIdx % contrastingPalette.size()];
         QPen pen(color);
-        pen.setWidth(PEN_WIDTH_MEDIUM);
+        pen.setWidth(constants::kPenWidthMedium);
         painter.setPen(pen);
 
         // Semi-transparent fill to differentiate sub-ROIs
         QColor fillColor = color;
-        fillColor.setAlpha(ALPHA_SUBROI_FILL); // 50/255 ≈ 20% opacity
+        fillColor.setAlpha(constants::kAlphaSubroiFill); // 50/255 ≈ 20% opacity
         painter.setBrush(fillColor);
 
         // Convert polygon to pixel space
-        if (isPolygonWGS84(polyPair.first))
+        if (domain::isPolygonWGS84(polyPair.first))
         {
             pixelSpacePolygon = gdalHandler.geoPolygonToPixels(polyPair.first);
             qInfo() << "[INFO]: Sub-ROI polygon converted from WGS84 to Pixel Space.";
@@ -897,7 +897,7 @@ ROIArea::showDecomposedROI()
             centroid /= pixelSpacePolygon.size();
 
         QFont font = painter.font();
-        font.setPointSize(FONT_SIZE_LARGE);
+        font.setPointSize(constants::kFontSizeLarge);
         font.setBold(true);
         painter.setFont(font);
 
@@ -918,10 +918,10 @@ ROIArea::showDecomposedROI()
         }
 
         // Try multiple label positions OUTSIDE the sub-ROI, picking first one that fits in image
-        const qreal margin = LABEL_MARGIN_SMALL;
+        const qreal margin = constants::kLabelMarginSmall;
         const int imgW = overlayImage.width();
         const int imgH = overlayImage.height();
-        const qreal labelRotation = LABEL_ROTATION_DEG; // Rotate labels to angle away from waypoints
+        const qreal labelRotation = constants::kLabelRotationDeg; // Rotate labels to angle away from waypoints
 
         // Positions outside the sub-ROI bounding box
         QVector<QPointF> candidatePositions = {
@@ -1006,7 +1006,7 @@ ROIArea::showDecomposedROI()
 
         // Draw background rect at rotated position
         painter.setPen(Qt::NoPen);
-        painter.setBrush(QColor(bgColor.red(), bgColor.green(), bgColor.blue(), ALPHA_LABEL_BG));
+        painter.setBrush(QColor(bgColor.red(), bgColor.green(), bgColor.blue(), constants::kAlphaLabelBg));
         painter.drawRect(QRectF(-2, -textHeight, textWidth + 4, textHeight + 4));
 
         // Draw text
@@ -1045,7 +1045,7 @@ ROIArea::generateWaypointsPerDecomposedArea()
     }
 
     // === VALIDATE MAR IS IN WGS84 COORDINATES ===
-    if (!isRotatedRectWGS84(ROIPolygonMinAreaRect))
+    if (!domain::isRotatedRectWGS84(ROIPolygonMinAreaRect))
     {
         qCritical() << "ERROR: ROIPolygonMinAreaRect is not in WGS84 coordinates!";
         qCritical() << "  Origin:" << ROIPolygonMinAreaRect.origin;
@@ -1073,14 +1073,14 @@ ROIArea::generateWaypointsPerDecomposedArea()
 
         // Ensure polygon is in geo coordinates (WGS84)
         QPolygonF subROIWGS84 = subROI;
-        if (!isPolygonWGS84(subROI))
+        if (!domain::isPolygonWGS84(subROI))
         {
             qInfo() << "Converting sub-ROI from pixel to WGS84 for drone" << droneId;
             emit StatusMessageChanged(tr("[INFO]: Converting sub-ROI to WGS84 coordinates for drone %1").arg(droneId));
             subROIWGS84 = gdalHandler.polygonToGeo(subROI);
 
             // Verify conversion succeeded
-            if (!isPolygonWGS84(subROIWGS84))
+            if (!domain::isPolygonWGS84(subROIWGS84))
             {
                 qCritical() << "ERROR: Failed to convert sub-ROI to WGS84 for drone" << droneId;
                 emit StatusMessageChanged(
@@ -1091,7 +1091,7 @@ ROIArea::generateWaypointsPerDecomposedArea()
         }
 
         // Find the drone associated with this sub-ROI
-        drone associatedDrone;
+        Drone associatedDrone;
         bool droneFound = false;
         uint32_t droneIdNum = droneId.toUInt();
         for (const auto& d : drones)
@@ -1146,7 +1146,7 @@ ROIArea::generateWaypointsPerDecomposedArea()
         }
 
         // === COORDINATE SYSTEM VALIDATION before calling PathPlanner ===
-        if (!validateCoordinateSystemMatch(subROIWGS84, ROIPolygonMinAreaRect, "generateWaypointsPerDecomposedArea"))
+        if (!domain::validateCoordinateSystemMatch(subROIWGS84, ROIPolygonMinAreaRect, "generateWaypointsPerDecomposedArea"))
         {
             emit StatusMessageChanged(tr("<font color='red'>[CRITICAL]: Coordinate system mismatch for drone %1 - "
                                          "sub-ROI and MAR must both be WGS84</font>")
@@ -1154,7 +1154,7 @@ ROIArea::generateWaypointsPerDecomposedArea()
             continue;
         }
 
-        if (!validateFootprintMeters(footprintX_m, footprintY_m, "generateWaypointsPerDecomposedArea"))
+        if (!domain::validateFootprintMeters(footprintX_m, footprintY_m, "generateWaypointsPerDecomposedArea"))
         {
             emit StatusMessageChanged(
                 tr("<font color='red'>[CRITICAL]: Unit mismatch - footprint not in meters for drone %1</font>")
@@ -1229,7 +1229,7 @@ ROIArea::showWaypoints()
 
     for (const auto& dronePair : allWaypointsPerDrone)
     {
-        const drone& d = dronePair.first;
+        const Drone& d = dronePair.first;
         const QList<QPointF>& waypoints = dronePair.second;
 
         qInfo() << "Processing drone" << d.id << "with" << waypoints.size() << "waypoints";
@@ -1244,7 +1244,7 @@ ROIArea::showWaypoints()
 
         QColor color = contrastingPalette[colorIdx % contrastingPalette.size()];
         QPen pen(color);
-        pen.setWidth(PEN_WIDTH_MEDIUM);
+        pen.setWidth(constants::kPenWidthMedium);
         painter.setPen(pen);
         painter.setBrush(color);
 
@@ -1254,7 +1254,7 @@ ROIArea::showWaypoints()
             geoWaypoints << wp;
 
         // Validate waypoints are in WGS84 before conversion
-        if (!isPolygonWGS84(geoWaypoints))
+        if (!domain::isPolygonWGS84(geoWaypoints))
         {
             qCritical() << "Waypoints for drone" << d.id << "are not in WGS84 coordinates!";
             emit StatusMessageChanged(tr("<font color='red'>[CRITICAL]: Waypoints for drone %1 not in WGS84 - cannot "
@@ -1289,11 +1289,11 @@ ROIArea::showWaypoints()
         // For very large images, cap at 2 pixels to remain visible
         qreal imageMinDim = qMin(overlayImage.width(), overlayImage.height());
         qreal dotRadius =
-            qBound(DOT_RADIUS_MIN, imageMinDim * DOT_RADIUS_SCALE, DOT_RADIUS_MAX); // 0.05% of image, range [0.5, 2.0]
+            qBound(constants::kDotRadiusMin, imageMinDim * constants::kDotRadiusScale, constants::kDotRadiusMax); // 0.05% of image, range [0.5, 2.0]
 
         // Draw lines connecting consecutive waypoints (w_1 -> w_2 -> ... -> w_n)
         QPen linePen(color);
-        linePen.setWidthF(qMax(DOT_RADIUS_MIN, dotRadius * 0.5)); // Line thinner than dots
+        linePen.setWidthF(qMax(constants::kDotRadiusMin, dotRadius * 0.5)); // Line thinner than dots
         painter.setPen(linePen);
         painter.setBrush(Qt::NoBrush);
         for (int i = 0; i < pixelWaypoints.size() - 1; ++i)
@@ -1322,7 +1322,7 @@ ROIArea::showWaypoints()
 
         // Position label OUTSIDE the sub-ROI bounding box, within image bounds
         QFont font = painter.font();
-        font.setPointSize(FONT_SIZE_SMALL);
+        font.setPointSize(constants::kFontSizeSmall);
         font.setBold(true);
         painter.setFont(font);
 
@@ -1331,8 +1331,8 @@ ROIArea::showWaypoints()
         int textWidth = fm.horizontalAdvance(labelText);
         int textHeight = fm.height();
 
-        const qreal margin = LABEL_MARGIN_SMALL;
-        const qreal labelRotation = LABEL_ROTATION_DEG; // Rotate labels to angle away from waypoints
+        const qreal margin = constants::kLabelMarginSmall;
+        const qreal labelRotation = constants::kLabelRotationDeg; // Rotate labels to angle away from waypoints
         const int imgW = overlayImage.width();
         const int imgH = overlayImage.height();
 
@@ -1419,7 +1419,7 @@ ROIArea::showWaypoints()
 
         // Draw background rect at rotated position
         painter.setPen(Qt::NoPen);
-        painter.setBrush(QColor(bgColor.red(), bgColor.green(), bgColor.blue(), ALPHA_LABEL_BG));
+        painter.setBrush(QColor(bgColor.red(), bgColor.green(), bgColor.blue(), constants::kAlphaLabelBg));
         painter.drawRect(QRectF(-2, -textHeight, textWidth + 4, textHeight + 4));
 
         // Draw text
@@ -1508,28 +1508,28 @@ ROIArea::generateContrastingPalette(const QColor& backgroundColor, int numColors
     // For very light backgrounds, use darker saturated colors
     if (bgLuminance > 0.7)
     {
-        targetValue = ALPHA_LABEL_BG;
+        targetValue = constants::kAlphaLabelBg;
         targetSaturation = 255;
     }
 
     // Generate colors evenly distributed around the color wheel
     // Offset from background hue to avoid similar colors
-    int hueOffset = (bgHue + HUE_OPPOSITE) % HUE_FULL_CIRCLE; // Start opposite to background
+    int hueOffset = (bgHue + constants::kHueOpposite) % constants::kHueFullCircle; // Start opposite to background
 
     for (int i = 0; i < numColors; ++i)
     {
         // Distribute hues evenly, starting from opposite of background
-        int hue = (hueOffset + (i * HUE_FULL_CIRCLE) / numColors) % HUE_FULL_CIRCLE;
+        int hue = (hueOffset + (i * constants::kHueFullCircle) / numColors) % constants::kHueFullCircle;
 
         // Avoid hues too close to the background hue (within 30 degrees)
         if (bgSat > 50) // Only if background has significant saturation
         {
             int hueDiff = qAbs(hue - bgHue);
-            if (hueDiff > HUE_OPPOSITE)
-                hueDiff = HUE_FULL_CIRCLE - hueDiff;
+            if (hueDiff > constants::kHueOpposite)
+                hueDiff = constants::kHueFullCircle - hueDiff;
             if (hueDiff < 30)
             {
-                hue = (hue + HUE_SHIFT_AMOUNT) % HUE_FULL_CIRCLE; // Shift away from background
+                hue = (hue + constants::kHueShiftAmount) % constants::kHueFullCircle; // Shift away from background
             }
         }
 
