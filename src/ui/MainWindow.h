@@ -1,7 +1,10 @@
 #ifndef MAINWINDOW_H
 #define MAINWINDOW_H
 
+#include "mission/MissionController.h"
+
 #include <QMainWindow>
+#include <memory>
 
 namespace Ui
 {
@@ -33,8 +36,6 @@ class MainWindow : public QMainWindow
     void
     onSaveDrawnAreaTriggeredWGS84();
     void
-    onOpenGeoJSONAndDrawOnOverlayTriggered();
-    void
     onCalculateMinAreaRectTriggered();
     void
     onOpenDroneInfo();
@@ -47,12 +48,13 @@ class MainWindow : public QMainWindow
     void
     onCalculateWaypoints();
 
-    // Auto-connected slot for ROIArea::StatusMessageChanged
+    // Auto-connected slot for ImageCanvas::StatusMessageChanged
     void
     on_roiArea_StatusMessageChanged(const QString& text);
 
   private:
-    Ui::MainWindow* ui;
+    std::unique_ptr<Ui::MainWindow> ui;
+    MissionController m_controller;
 };
 
 #endif // MAINWINDOW_H

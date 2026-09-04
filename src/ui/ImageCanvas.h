@@ -1,11 +1,13 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR BSD-3-Clause
 
-#ifndef ROIAREA_H
-#define ROIAREA_H
+#ifndef IMAGECANVAS_H
+#define IMAGECANVAS_H
 
-#include "GDALHandler.h"
-#include "grahamscan.h"
+#include "io/GDALHandler.h"
+#include "domain/RotatedRect.h"
+#include "domain/Drone.h"
+
 #include <QColor>
 #include <QDebug>
 #include <QFileDialog>
@@ -18,16 +20,14 @@
 #include <QPoint>
 #include <QStack>
 #include <QWidget>
-#include <pathplanner.h>
 #include <qcontainerfwd.h>
-#include <utils.h>
 
-class ROIArea : public QWidget
+class ImageCanvas : public QWidget
 {
     Q_OBJECT
 
   public:
-    ROIArea(QWidget* parent = nullptr);
+    ImageCanvas(QWidget* parent = nullptr);
     QByteArray
     exportPolygonGeoJSON() const;
     bool
@@ -55,8 +55,6 @@ class ROIArea : public QWidget
     getOverlayStackTop();
     void
     cleanOverlayStack();
-    RotatedRect
-    minimumAreaRectangle(const QList<QPointF>& hull);
     void
     clearPolygon();
     void
@@ -67,12 +65,8 @@ class ROIArea : public QWidget
     cleanToOpenImage();
     void
     saveGEOJson(QByteArray& document);
-    QByteArray
-    reprojectGeoJSONPolygon(const QByteArray& srcJson) const;
     QList<QPointF>
     openGeoJSONFilePoints(const QString& filename);
-    void
-    drawGeoPolygonOnImage(QImage* img, const QList<QPointF>& geoPts);
     void
     drawGeoPolygonOnCurrentOverlay(const QList<QPointF>& geoPts);
     void
@@ -82,7 +76,7 @@ class ROIArea : public QWidget
     drawPolygonOutline(const QPolygonF& polygon);
 
     void
-    setPolygonMinAreaRect(RotatedRect rect)
+    setPolygonMinAreaRect(const RotatedRect& rect)
     {
         ROIPolygonMinAreaRect = rect;
     }
@@ -90,7 +84,7 @@ class ROIArea : public QWidget
     inline QPolygonF
     getFinalPolygon()
     {
-        return finalPolygon;
+        return m_finalPolygon;
     }
 
     inline RotatedRect
@@ -100,36 +94,17 @@ class ROIArea : public QWidget
     }
 
     void
-    generateWaypointsPerDecomposedArea();
-    void
     calculateMinimumAreaRectangle();
     void
-    openDroneFile(const QString& filename);
-    QList<drone>
-    calculateDroneCapabilities();
+    showDecomposedROI(const QList<QPair<QPolygonF, QString>>& decomposed);
     void
-    decomposeROI();
-    void
-    showDecomposedROI();
-    QList<QPointF>
-    generateSweepWaypoints(const QPolygonF& subROI, const drone& d, const RotatedRect& mar) const;
+    showWaypoints(const QList<QPair<Drone, QList<QPointF>>>& waypoints);
 
-    PathPlanner&
-    getPathPlanner()
+    QPolygonF
+    finalPolygonGeo() const
     {
-        return pathPlanner;
+        return gdalHandler.polygonToGeo(m_finalPolygon);
     }
-
-    void
-    showWaypoints();
-
-    // Color analysis and contrast generation
-    QColor
-    analyzeBackgroundColor(const QImage& image, const QRectF& region = QRectF()) const;
-    QVector<QColor>
-    generateContrastingPalette(const QColor& backgroundColor, int numColors) const;
-    QColor
-    getContrastingTextColor(const QColor& backgroundColor) const;
 
   public slots:
     void
@@ -156,9 +131,8 @@ class ROIArea : public QWidget
 
 
   private:
-    GrahamScan grahamScanner;
+    QList<QPointF> m_grahamPoints;
     GDALHandler gdalHandler;
-    PathPlanner pathPlanner;
     QPointF
     toImageCoords(const QPointF& pWidget) const;
     void
@@ -168,13 +142,7 @@ class ROIArea : public QWidget
     void
     drawPolygon(const QPolygonF& polygon);
     QPolygonF
-    rotatedRectToPolygon(const RotatedRect& r);
-    QPolygonF
     snapPolygon(const QPolygonF& poly);
-    double
-    dot(const QPointF& a, const QPointF& b);
-    QPointF
-    perp(const QPointF& v);
     bool modified = false;
     bool writing = false;
     bool haveStartPoint = false;
@@ -187,18 +155,13 @@ class ROIArea : public QWidget
     QPair<QImage, QString> openImagePair;
     QPointF lastPoint;
     QList<QPointF> pointList;
-    QPolygonF finalPolygon;
+    QPolygonF m_finalPolygon;
     qreal zoomFactor = 1.0;                // 1.0 = 100%
     QPointF panOffset = QPointF(0.0, 0.0); // In pixel, image space.
     RotatedRect ROIPolygonMinAreaRect;
     QPoint lastPanPos;
     bool panning = false;
     bool canDrawOnImage = false;
-    QList<QPair<drone, QList<QPointF>>> allWaypointsPerDrone;
-
-    // Cached contrasting color palette based on background analysis
-    QVector<QColor> contrastingPalette;
-    QColor contrastingTextColor;
 };
 
 #endif
